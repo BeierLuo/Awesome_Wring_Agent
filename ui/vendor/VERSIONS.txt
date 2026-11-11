@@ -1,0 +1,4 @@
+marked 18.2.0
+katex 0.19.1
+dompurify 3.4.17
+Downloaded from npm; licenses included.

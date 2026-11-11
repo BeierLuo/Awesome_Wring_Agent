@@ -1,0 +1,77 @@
+# Default deny: only reviewed application files are publishable.
+# New source files must be explicitly allowed below.
+*
+
+# Root application modules and setup
+!/.gitignore
+!/README.md
+!/requirements.txt
+!/启动写作工作区.command
+!/agent_files.py
+!/gemini_stream.py
+!/latex_project.py
+!/paper_assistant.py
+!/paper_tools.py
+!/projects.py
+!/server.py
+!/style_library.py
+!/style_memory.py
+!/writing_agent.py
+
+# Browser application and bundled third-party runtime assets
+!/ui/
+!/ui/*.js
+!/ui/*.css
+!/ui/index.html
+!/ui/vendor/
+!/ui/vendor/*.js
+!/ui/vendor/*.css
+!/ui/vendor/*LICENSE.txt
+!/ui/vendor/VERSIONS.txt
+!/ui/vendor/fonts/
+!/ui/vendor/fonts/KaTeX_*.woff
+!/ui/vendor/fonts/KaTeX_*.woff2
+!/ui/vendor/fonts/KaTeX_*.ttf
+
+# Application role / skill definitions (not personal memories)
+!/agents/
+!/agents/README.md
+!/agents/*/
+!/agents/*/AGENT.md
+!/skills/
+!/skills/*/
+!/skills/*/SKILL.md
+
+# Tests with synthetic fixtures
+!/tests/
+!/tests/test_*.py
+!/tests/test_*.cjs
+!/tests/package.json
+!/tests/package-lock.json
+
+# Explicit private/local exclusions; never force-add these.
+.local/
+workspaces/
+style-library/
+work/
+.python/
+.venv/
+.tools/
+node_modules/
+__pycache__/
+.DS_Store
+.env
+.env.*
+*api-config*
+*credentials*
+*secret*
+*.pem
+*.key
+*.p12
+*.pfx
+*.log
+*.sqlite*
+*.db
+*.bak
+*.tmp
+/README.txt
