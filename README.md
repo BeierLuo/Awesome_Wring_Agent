@@ -24,7 +24,7 @@ python server.py
 
 Windows 下可使用 `.venv\Scripts\python.exe -m pip install -r requirements.txt` 和 `.venv\Scripts\python.exe server.py`。
 
-打开 <http://127.0.0.1:8768/>。macOS 安装好依赖后，也可双击 `启动写作工作区.command`。
+打开 <http://127.0.0.1:8768/>。纯英文界面位于 <http://127.0.0.1:8768/en/>，也可点击顶栏的 English / Chinese 切换。两个版本共享项目和 API 配置，论文、对话及规则文件内容保持原文。macOS 安装好依赖后，也可双击 `启动写作工作区.command`。
 
 可选启动参数：
 
@@ -52,6 +52,10 @@ python server.py --root /path/to/private-workspaces
 安装 Tectonic，并确保 `tectonic` 可在 `PATH` 中找到；也支持将适合本机平台的可执行文件放在 `.tools/tectonic`。本仓库不附带本地编译器或缓存。
 
 当前隔离编译流程支持 macOS；其他系统仍可编辑和导出源码。首次编译可能下载 TeX 宏包，不支持所有需要 LuaLaTeX、外部脚本或额外工具链的项目。
+
+## 双栏写作与 PDF 预览
+
+LaTeX 项目使用左侧章节导航、中间 Assistant / Source、右侧常驻 PDF 的布局。Source 页可编辑项目源文件，点击保存后再用 Recompile 编译；编译成功会自动刷新 PDF 并保留当前页，失败时保留上次成功的结果。预览默认适应整页，支持连续滚动、页码跳转、缩放、适应宽度及拖动分隔条调整宽度。PDF 按需加载页面；窄屏下编辑区与预览上下排列。输入框顶部的横条可上下拖动调整高度，自动记住大小，双击恢复默认。
 
 ## 基本使用
 

@@ -90,6 +90,28 @@ for(const file of ['app.js','workspace-core.js','providers.js','workspace.js'])v
   assert.match(vm.runInContext('sections[0].text',ctx),/New/);
   assert.equal(vm.runInContext('sections[0].versions.at(-1).reason',ctx),'采用 Gemini LaTeX 修改');
   assert.throws(()=>vm.runInContext('W.latexRevision(sections[0],sections[0].chat[0])',ctx),/当前版本/);
+  // Direct adoption saves the clicked reply without opening review or calling a model.
+  vm.runInContext("sections[0].chat.push({id:'direct-response',role:'model',text:latexAnswer.replace('New','Direct'),canAdopt:true,baseVersion:sections[0].versions.at(-1).id})",ctx);
+  const directEntry=vm.runInContext('renderEntry(sections[0].chat.at(-1))',ctx);
+  const reviewIndex=directEntry.children.findIndex(n=>n.textContent==='查看 LaTeX 修改稿');
+  const directButton=directEntry.children[reviewIndex+1];
+  assert.equal(directButton.textContent,'采用当前 LaTeX 修改稿');
+  const directRequestCount=requests.length;
+  await directButton.onclick();
+  assert.equal(nodes.get('proposal-dialog').open,false);
+  assert.match(saved.at(-1).state.sections[0].text,/Direct/);
+  assert.equal(vm.runInContext('sections[0].versions.length',ctx),3);
+  assert.equal(vm.runInContext('sections[0].pending',ctx),null);
+  assert.equal(requests.length,directRequestCount+1);
+  assert.equal(requests.at(-1).url,'/api/save');
+  await directButton.onclick();
+  assert.equal(requests.length,directRequestCount+1,'Stale reply must not write again');
+  assert.match(nodes.get('status').textContent,/当前版本/);
+  const unfinished=vm.runInContext("renderEntry({...sections[0].chat.at(-1),canAdopt:false})",ctx);
+  const disabledAdopt=unfinished.children.find(n=>n.textContent==='采用当前 LaTeX 修改稿');
+  assert.equal(disabledAdopt.disabled,true);
+  await disabledAdopt.onclick();
+  assert.equal(requests.length,directRequestCount+1);
   for(const invalid of ['Discuss only','```latex\nA\n```\n```tex\nB\n```','```latex\nunfinished']){
     ctx.invalid=invalid;
     assert.throws(()=>vm.runInContext('W.latexRevision(sections[0],{text:invalid,baseVersion:sections[0].versions.at(-1).id})',ctx),/完整的 LaTeX/);

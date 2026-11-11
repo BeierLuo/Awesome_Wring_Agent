@@ -75,3 +75,7 @@ __pycache__/
 *.bak
 *.tmp
 /README.txt
+
+# Shared English UI catalog and resource localizer
+!/localization.py
+!/ui/translations-en.json

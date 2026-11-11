@@ -53,7 +53,7 @@ function traceLabel(event){
   return (event.status==='ok'?'✓ ':'⚠ ')+prefix+(event.tool?'['+event.tool+'] ':'')+traceDetail(event)+(Number.isFinite(event.elapsed)?' · '+event.elapsed+'s':'');
 }
 function traceDetail(event){
-  if(event.status!=='ok')return (event.tool||'读取')+'：'+(event.message||'未完成');
+  if(event.status!=='ok')return (event.tool||'读取')+'：'+((window.DraftLanguage?.systemText(event.message)??event.message)||'未完成');
   if(event.tool==='read_style_memory')return '读取 '+(event.author?event.author+' · ':'')+event.section+' 章节风格记忆';
   if(event.tool==='recommend_writing_strategy')return 'GPT 比较 '+event.section+' 写作路线';
   if(event.tool==='find_style_examples')return '论文库：读取 '+event.matches+' 个写作范例';
@@ -90,8 +90,8 @@ async function runWritingAgent(writer,prompt,signal){
       if(event.type==='writer_delta'){preview+=event.text;events.preview=preview;$('agent-output').hidden=false;$('agent-output-text').textContent=preview;phase='Gemini 正在输出回复';}
 
       if(event.type==='error'){events.push('⚠ '+event.error);$('agent-events').textContent=events.join('\n');throw new Error(event.error);}
-      if(event.type==='progress')status(event.message);
-      if(event.type==='activity'){phase=event.message;stepStarted=Date.now();events.push('→ '+event.message+' · 开始于 '+event.elapsed+'s');$('agent-events').textContent=events.join('\n');status(event.message);}
+      if(event.type==='progress')status((window.DraftLanguage?.systemText(event.message)??event.message));
+      if(event.type==='activity'){phase=(window.DraftLanguage?.systemText(event.message)??event.message);stepStarted=Date.now();events.push('→ '+(window.DraftLanguage?.systemText(event.message)??event.message)+' · 开始于 '+event.elapsed+'s');$('agent-events').textContent=events.join('\n');status((window.DraftLanguage?.systemText(event.message)??event.message));}
       if(event.type==='tool'){events.push(traceLabel(event));$('agent-events').textContent=events.join('\n');status(events.at(-1));}
       if(event.type==='result')result=event;
     };

@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Local-only paper workspace with a private local API configuration file."""
+import localization
 import argparse, base64, copy, json, mimetypes, os, re, shutil, subprocess, sys, threading, uuid, webbrowser, urllib.request, urllib.error
 from pathlib import Path
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
@@ -220,7 +221,7 @@ def write_state(folder,state,pdf_bytes):
 class Handler(BaseHTTPRequestHandler):
     def log_message(self,*args): pass
     def response(self,status,data):
-        body=json.dumps(data,ensure_ascii=False).encode()
+        body=json.dumps(localization.response_metadata(data) if self.headers.get('X-Draft-Language')=='en' else data,ensure_ascii=False).encode()
         self.send_response(status);self.send_header('Content-Type','application/json; charset=utf-8');self.send_header('Content-Length',str(len(body)));self.send_header('Cache-Control','no-store');self.end_headers();self.wfile.write(body)
     def allowed(self):
         host=self.headers.get('Host','')
@@ -308,7 +309,7 @@ class Handler(BaseHTTPRequestHandler):
                 if path.path in {'/api/latex/pdf-info','/api/latex/pdf-page'}:
                     import pymupdf
                     with pymupdf.open(folder/'.latex/compiled.pdf') as doc:
-                        if path.path=='/api/latex/pdf-info':return self.response(200,{'pages':len(doc)})
+                        if path.path=='/api/latex/pdf-info':return self.response(200,{'pages':len(doc),'sizes':[[page.rect.width,page.rect.height] for page in doc]})
                         page=int(query.get('page',['1'])[0])
                         if not 1<=page<=len(doc):raise ValueError('PDF 页码无效')
                         view=doc[page-1];scale=min(2,1600/max(view.rect.width,view.rect.height))
@@ -320,9 +321,14 @@ class Handler(BaseHTTPRequestHandler):
                 if mime=='application/zip':self.send_header('Content-Disposition','attachment; filename=latex-project.zip')
                 self.end_headers();self.wfile.write(raw);return
             if path.path.startswith('/api/'): return self.response(404,{'error':'不存在的接口'})
-            name=path.path.lstrip('/') or 'index.html'
-            if name not in {'index.html','style.css','app.js','workspace.js','workspace-core.js','workspace.css','settings.js','providers.js','markdown.js','markdown.css','latex.js','latex.css','projects.js','projects.css','agent-files.js','agent-files.css','style-library.js','style-library.css','writing-strategy.js','writing-strategy.css'} and not re.fullmatch(r'vendor/(?:marked\.umd\.js|purify\.min\.js|katex\.min\.(?:js|css)|fonts/[A-Za-z0-9_-]+\.(?:woff2?|ttf))',name): return self.response(404,{'error':'Not found'})
-            raw=(BASE/'ui'/name).read_bytes();self.send_response(200);self.send_header('Content-Type',mimetypes.guess_type(name)[0] or 'application/octet-stream');self.send_header('Content-Length',str(len(raw)));self.send_header('Cache-Control','no-store');self.send_header('X-Content-Type-Options','nosniff');self.end_headers();self.wfile.write(raw)
+            english=path.path=='/en' or path.path.startswith('/en/')
+            if path.path=='/en':
+                self.send_response(302);self.send_header('Location','/en/');self.end_headers();return
+            name=(path.path[4:] if english else path.path.lstrip('/')) or 'index.html'
+            if name not in {'split-workspace.js','split-workspace.css','language.js','index.html','style.css','app.js','workspace.js','workspace-core.js','workspace.css','settings.js','providers.js','markdown.js','markdown.css','latex.js','latex.css','projects.js','projects.css','agent-files.js','agent-files.css','style-library.js','style-library.css','writing-strategy.js','writing-strategy.css'} and not re.fullmatch(r'vendor/(?:marked\.umd\.js|purify\.min\.js|katex\.min\.(?:js|css)|fonts/[A-Za-z0-9_-]+\.(?:woff2?|ttf))',name): return self.response(404,{'error':'Not found'})
+            raw=(BASE/'ui'/name).read_bytes()
+            if english and not name.startswith('vendor/') and name.endswith(('.html','.js')):raw=localization.english_resource(name,raw.decode()).encode()
+            self.send_response(200);self.send_header('Content-Type',mimetypes.guess_type(name)[0] or 'application/octet-stream');self.send_header('Content-Length',str(len(raw)));self.send_header('Cache-Control','no-store');self.send_header('X-Content-Type-Options','nosniff');self.end_headers();self.wfile.write(raw)
         except FileNotFoundError: self.response(404,{'error':'未找到Project文件'})
         except (ValueError,KeyError,OSError) as e: self.response(400,{'error':str(e)})
     def do_POST(self):
@@ -502,6 +508,7 @@ class Handler(BaseHTTPRequestHandler):
                 cancel=threading.Event();RUNS[run_id]=cancel
             self.send_response(200);self.send_header('Content-Type','application/x-ndjson; charset=utf-8');self.send_header('Cache-Control','no-store');self.send_header('Connection','close');self.end_headers();self.close_connection=True
             def emit(event):
+                if self.headers.get('X-Draft-Language')=='en':event=localization.response_metadata(event)
                 try:self.wfile.write((json.dumps(event,ensure_ascii=False)+'\n').encode());self.wfile.flush()
                 except (BrokenPipeError,ConnectionResetError,OSError): cancel.set();raise ValueError('连接已中断，Agent 已停止。') from None
             try:
