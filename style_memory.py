@@ -3,22 +3,39 @@ import hashlib,json,re,uuid
 from pathlib import Path
 import style_library as library
 
-SECTIONS={'abstract':'Abstract','introduction':'Introduction','preliminary':'Preliminary','motivation':'Motivation','method':'Method','experiments':'Experiments'}
+SECTIONS={'abstract':'Abstract','introduction':'Introduction','related_work':'Related Work','preliminary':'Preliminary','motivation':'Motivation','method':'Method','experiments':'Experiments','results':'Results','ablation':'Ablation','discussion':'Discussion','limitations':'Limitations','conclusion':'Conclusion','appendix':'Appendix','references':'References'}
 AUTHORS={'hongxin':'Hongxin Wei','xuefeng':'Xuefeng Du'}
 GLOBAL='''# 写作策略记忆导航
 先确认当前章节的写作任务、论文的 hook 和贡献；缺少依据时提出备选路线，不编造论文定位。
-按需读取 authors/<作者>/<章节>.md；只读当前章节，跨章节论证需要时再取对应文件。
+按需读取 authors/<作者>/<章节>.md；写作风格记忆只读当前章节，不跨章节补例；查证论文事实另用资料助理。
 这些是有限论文样本中的写作规律，不是作者固有属性；共同作者、领域和投稿年份可能影响风格。
 规则必须有适用条件与原文来源。策略和可迁移规律保存在记忆中；原文、数据和全文保持在论文库，不重复抄入记忆。
 需要例句或具体论证方式时用 find_style_examples 回查原文。参考论文不提供当前论文的实验事实。
 GPT 给出的候选方案不是已验证结论；用户选定后才保存为当前章节计划，正文仍需用户确认采用。
 '''
 
-def section_key(title):
-    t=(title or '').lower()
-    for key,patterns in [('abstract',['abstract','摘要']),('preliminary',['prelim','background','problem setup','problem formulation','预备','问题设定']),('motivation',['motivat','动机']),('experiments',['experiment','evaluation','result','ablation','实验','结果']),('method',['method','approach','framework','方法']),('introduction',['intro','引言'])]:
-        if any(x in t for x in patterns):return key
-    return 'introduction'
+SECTION_PATTERNS={
+    'abstract':r'\babstract\b|摘要',
+    'introduction':r'\bintro(?:duction)?\b|引言|绪论',
+    'related_work':r'\brelated[ _-]+work\b|相关工作',
+    'preliminary':r'\bpreliminar(?:y|ies)\b|\bbackground\b|\bproblem (?:setup|formulation)\b|预备|背景|问题设定',
+    'motivation':r'\bmotivation\b|动机',
+    'method':r'\bmethod(?:s|ology)?\b|\bapproach\b|\bframework\b|方法',
+    'experiments':r'\bexperiment(?:s|al)?\b|\bevaluation\b|实验|评估',
+    'results':r'\bresults?\b|结果',
+    'ablation':r'\bablation\b|消融',
+    'discussion':r'\bdiscussion\b|讨论',
+    'limitations':r'\blimitations?\b|局限',
+    'conclusion':r'\bconclusions?\b|结论|总结',
+    'appendix':r'\bappendi(?:x|ces)\b|\bsupplement(?:ary)?\b|附录|补充材料',
+    'references':r'\breferences\b|\bbibliography\b|参考文献',
+}
+def section_key(title,default=None):
+    t=(title or '').strip().lower()
+    if t in SECTIONS:return t
+    matches=[(match.start(),key) for key,pattern in SECTION_PATTERNS.items() if (match:=re.search(pattern,t))]
+    # Prefer the named parent heading, not a later mention of another section.
+    return min(matches)[1] if matches else default
 def author_of(p):
     name=p['name'].lower()
     return 'hongxin' if 'hongxin' in name else 'xuefeng' if 'xuefeng' in name else None
@@ -52,11 +69,7 @@ def examples(root,author,section):
         p=library.read(root,meta['id']);original={x['id']:x for c in p['chunks'] for x in c}
         for batch in p['analyses']:
             for e in batch['examples']:
-                title=e['section'].lower();mapped=section_key(title)
-                if not any(x in title for x in ['abstract','摘要','intro','引言','prelim','background','预备','motivat','动机','experiment','实验','result','结果','method','方法']):
-                    mapped={'method':'method','experiment':'experiments','result':'experiments','motivation':'motivation'}.get(e['role'],'introduction')
-                preliminary_task=section=='preliminary' and e['role'] in {'background','method'} and any(word in e['purpose']+e['logic'] for word in ['定义','符号','任务设定','形式化','问题设定'])
-                if mapped!=section and not(section=='motivation' and e['role']=='motivation') and not preliminary_task:continue
+                if section_key(e.get('section'))!=section:continue
                 src=original[e['paragraph_id']]
                 result.append({'source_id':meta['id'][:12]+':'+src['id'],'paper_id':meta['id'],'paper':meta['name'],'page':src['page'],'section':e['section'],'role':e['role'],'purpose':e['purpose'][:500],'logic':e['logic'][:600],'wording':e['wording'][:500],'sentence_moves':e['sentence_moves'][:6],'text':src['text'][:1500]})
     # Round-robin across papers to avoid letting one paper dominate a profile.
@@ -111,6 +124,8 @@ def dashboard(root,folder,title,target=None):
     ensure(root);config=settings(folder)
     if config['mode']=='off':return None
     section=config.get('section_types',{}).get(target['id'],section_key(title)) if target else section_key(title)
+    if section not in SECTIONS:
+        return {'global':GLOBAL,'mode':config['mode'],'current_section':None,'goal':config['goal'],'available_memories':[], 'selected_plan':None,'pending_options':None,'notice':'当前章节类型未确认，请先选择章节类型；不会默认使用 Introduction 或跨章节参考。'}
     path=plan_path(folder,section)
     plan=json.loads(path.read_text()) if path.exists() else None
     if plan and target and plan.get('section_id')!=target['id']:plan=None
@@ -139,6 +154,9 @@ def recommend(root,folder,state,target,section,goal,mode,generate,instructions):
     if not pool:raise ValueError('该作者/章节暂无足够范例，请先补充对应论文分析，或选择其他章节')
     paper_abstract=next((s['text'][:5000] for s in state['sections'] if section_key(s['title'])=='abstract' and s.get('initialized')),None)
     current={'title':target.get('title') if target else '', 'text':target.get('text','')[:16000] if target else '', 'abstract':paper_abstract,'section_titles':[s['title'] for s in state['sections']]}
+    if target and target.get('selected_passage'):
+        from paragraph_selection import narrative_context
+        current.update(text=target['selected_passage']['text'], narrative_context=narrative_context(target), scope='selected_passage')
     result=json_result(generate,instructions,{'task':goal,'section':section,'current_paper':current,'mode':mode,'rules':[{'author':m['author'],'text':m['text']} for m in memories],'candidate_papers':catalog,'examples':pool},PLAN_SCHEMA,'writing_strategy')
     if not 2<=len(result['options'])<=3:raise ValueError('需要2–3个可比较方案')
     pids={p['id'] for p in catalog};sources={e['source_id']:e for e in pool}

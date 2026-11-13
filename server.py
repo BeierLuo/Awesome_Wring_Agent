@@ -12,6 +12,7 @@ LOCK=threading.Lock()
 RUNS_LOCK=threading.Lock()
 RUNS={}
 LATEX_BUILD_LOCK=threading.Lock()
+OVERLEAF_LOCK=threading.Lock()
 sys.path.insert(0,str(BASE))
 def now(): return datetime.now(timezone.utc).isoformat()
 def atomic(path, data):
@@ -24,7 +25,7 @@ def safe_id(value):
     return value
 
 GCP_FIELDS={'gcp_auth','gcp_key','gcp_project','gcp_location','gcp_model','gcp_pdf_mode','gcp_bucket'}
-CONFIG_FIELDS={'gemini_key','gemini_model','openai_key','openai_model','writer_provider'} | GCP_FIELDS
+CONFIG_FIELDS={'gcp_models','gemini_models','openai_writer_models','gemini_key','gemini_model','openai_key','openai_model','openai_writer_model','writer_provider'} | GCP_FIELDS
 def config_location(server): return getattr(server,'config_dir',BASE/'.local')/'api-config.json'
 def read_config(server):
     path=config_location(server)
@@ -50,6 +51,28 @@ def write_config(server,data):
         os.replace(tmp,path);os.chmod(path,0o600)
     finally:
         if tmp.exists(): tmp.unlink()
+
+
+def preference_store(server):
+    import preferences
+    return preferences.Store(getattr(server,'preference_root',config_location(server).parent/'preferences'))
+
+def preference_context(server, params):
+    import preferences
+    wid=params.get('workspaceId');sid=params.get('sectionId');state={};target=None
+    if wid:
+        folder=server.root/safe_id(wid)
+        if folder.is_symlink() or not (folder/'workspace.json').is_file():raise ValueError('Project 不存在或已移入回收站')
+        state=read_state(folder)
+        if sid:
+            target=next((x for x in state['sections'] if x['id']==sid),None)
+            if not target:raise ValueError('章节不存在')
+    elif sid:raise ValueError('请先选择论文')
+    ctx=preferences.context(state,target)
+    if target:
+        import style_memory
+        ctx['section_type']=style_memory.settings(folder).get('section_types',{}).get(target['id'],ctx['section_type'])
+    return ctx,state,target
 
 
 class CloudError(Exception):
@@ -99,6 +122,11 @@ def gcp_connection(config):
 
 def gcp_request(server, payload, test=False):
     if not test: raise ValueError('写作已迁移到按需读取 Agent，请刷新页面后重试。')
+    if payload.get('selection') is not None:
+        import paragraph_selection
+        target=copy.deepcopy(target)
+        focus=paragraph_selection.validate(target,payload['selection'])
+        target['selected_passage']=focus
     overrides=payload.get('config',{})
     if not isinstance(overrides,dict) or set(overrides)-GCP_FIELDS or any(not isinstance(v,str) or len(v)>8192 for v in overrides.values()): raise ValueError('GCP 配置无效')
     with LOCK: config={**read_config(server),**{k:v.strip() for k,v in overrides.items()}}
@@ -117,6 +145,27 @@ def paper_snapshot(server,payload):
     return folder,state
 
 
+def writer_efforts(provider,model):
+    # Conservative support list; unknown/legacy models retain their API defaults.
+    if provider=='openai':
+        if re.match(r'^gpt-(?:5|6)(?:[.-]|$)',model) and not any(x in model for x in ('-pro','-chat','-image')):
+            return {'low','medium','high'}
+        if re.match(r'^o[134](?:-|$)',model) and '-pro' not in model and not model.startswith(('o1-mini','o1-preview')):return {'low','medium','high'}
+    elif provider in {'gcp','gemini'}:
+        if re.match(r'^gemini-4-(?:carbon|argon)(?:-|$)',model):return {'low','medium','high'}
+        if 'image' not in model and re.match(r'^gemini-(?:3\.1-(?:pro|flash-lite)|3\.[5-8]-flash|3-flash)(?:-|$)',model):return {'low','medium','high'}
+    return set()
+
+
+def writer_body(body,provider,model,effort):
+    if effort=='default':return body
+    if effort not in writer_efforts(provider,model):raise ValueError('当前模型不支持所选思考强度，请改用默认。')
+    result=copy.deepcopy(body)
+    if provider=='openai':result['reasoningEffort']=effort
+    else:result.setdefault('generationConfig',{})['thinkingConfig']={'thinkingLevel':effort.upper()}
+    return result
+
+
 def prepare_agent(server,payload):
     from writing_agent import WritingAgent
     folder,state=paper_snapshot(server,payload)
@@ -127,8 +176,13 @@ def prepare_agent(server,payload):
     target=next((s for s in state['sections'] if s['id']==section_id),None) if section_id else None
     if section_id and target is None: raise ValueError('所选章节不存在')
     if target and not target.get('initialized'): raise ValueError('请先提取并核对当前章节原稿')
+    if payload.get('selection') is not None:
+        import paragraph_selection
+        target=copy.deepcopy(target)
+        focus=paragraph_selection.validate(target,payload['selection'])
+        target['selected_passage']=focus
     overrides=payload.get('config',{})
-    fields=GCP_FIELDS|{'gemini_key','gemini_model','writer_provider','openai_key','openai_model'}
+    fields=GCP_FIELDS|{'writer_reasoning_effort','gemini_key','gemini_model','writer_provider','openai_key','openai_model','openai_writer_model'}
     if not isinstance(overrides,dict) or set(overrides)-fields or any(not isinstance(v,str) or len(v)>8192 for v in overrides.values()): raise ValueError('模型配置无效')
     with LOCK: config={**read_config(server),**{k:v.strip() for k,v in overrides.items()}}
     provider=config.get('writer_provider') or 'gcp'
@@ -143,17 +197,35 @@ def prepare_agent(server,payload):
         if not re.fullmatch(r'[a-zA-Z0-9][a-zA-Z0-9._-]{0,127}',model): raise ValueError('请先选择备用 Gemini 模型')
         url='https://generativelanguage.googleapis.com/v1beta/models/'+model+':generateContent'
         headers={'Content-Type':'application/json','x-goog-api-key':key}
+    elif provider=='openai':
+        key=config.get('openai_key','')
+        if not key or any(c.isspace() for c in key) or 'redacted' in key.lower(): raise ValueError('请填写真实的 OpenAI API Key')
+        model=config.get('openai_writer_model') or config.get('openai_model') or 'gpt-4.1'
+        if not re.fullmatch(r'[a-zA-Z0-9][a-zA-Z0-9._:-]{0,127}',model): raise ValueError('请填写有效的 OpenAI 写作模型 ID')
     else: raise ValueError('写作服务无效')
+    effort=config.get('writer_reasoning_effort') or 'default'
+    if effort not in {'default','low','medium','high'}:raise ValueError('思考强度无效')
+    writer_body({},provider,model,effort)
     run_id=safe_id(payload.get('runId'))
-    def generate(body,timeout): return cloud_json(url,headers,json.dumps(body).encode(),'POST',timeout=timeout)
-    def stream(body,timeout,on_text,check):
+    def generate(body,timeout):
+        body=writer_body(body,provider,model,effort)
+        if provider=='openai':
+            import openai_writer
+            return openai_writer.generate(key,model,body,timeout,lambda text:None,lambda:None)
+        return cloud_json(url,headers,json.dumps(body).encode(),'POST',timeout=timeout)
+    def stream(body,timeout,on_text,check,on_status=None):
+        body=writer_body(body,provider,model,effort)
+        if provider=='openai':
+            import openai_writer
+            return openai_writer.generate(key,model,body,timeout,on_text,check,on_status)
         import gemini_stream
-        try:return gemini_stream.generate(url,headers,body,timeout,on_text,check)
-        except urllib.error.HTTPError as e:
-            raise CloudError('Gemini 流式请求失败（HTTP '+str(e.code)+'），请检查模型权限、额度和配置。',e.code) from None
-        except (urllib.error.URLError,TimeoutError,OSError):
-            raise CloudError('Gemini 连接中断或等待超时；已生成内容仅供预览，当前稿未改写。') from None
+        try:return gemini_stream.generate(url,headers,body,timeout,on_text,check,on_status)
+        except (urllib.error.URLError,TimeoutError,OSError) as e:
+            raise gemini_stream.transport_error(e) from None
     generate.stream=stream
+    generate.provider=provider
+    generate.reasoning_effort=effort
+    generate.label='OpenAI' if provider=='openai' else 'Gemini'
     def assistant_generate(body,timeout):
         key=config.get('openai_key','')
         if not key or any(c.isspace() for c in key) or 'redacted' in key.lower(): raise ValueError('GPT 查证需要 OpenAI API Key，请在 API 设置中填写。')
@@ -232,10 +304,28 @@ class Handler(BaseHTTPRequestHandler):
         if not self.allowed(): return self.response(403,{'error':'不允许跨来源访问Project'})
         path=urlparse(self.path)
         try:
+            if path.path.startswith('/api/preferences'):
+                if self.headers.get('X-Draft-Preferences')!='1':return self.response(403,{'error':'请从写作偏好页面访问'})
+                import preferences,agent_files,style_memory
+                params={k:v[0] for k,v in parse_qs(path.query).items()}
+                store=preference_store(self.server)
+                if path.path=='/api/preferences/job':return self.response(200,preferences.job(store,safe_id(params.get('runId'))))
+                if path.path!='/api/preferences':return self.response(404,{'error':'偏好接口不存在'})
+                ctx,state,target=preference_context(self.server,params)
+                result=store.dashboard(**ctx,revision=params.get('version'),history_offset=int(params.get('historyOffset','0')))
+                result['context']=ctx
+                result['sections']=[{'id':x['id'],'title':x['title']} for x in state.get('sections',[])]
+                result['legacy']=[]
+                if ctx['workspace']:
+                    legacy=agent_files.read_file('memory/preferences.md',self.server.root/ctx['workspace'])
+                    result['legacy'].append({'title':'旧版论文偏好（仍生效，尚未纳入 Git）','text':legacy['text'],'path':legacy['path']})
+                library_root=getattr(self.server,'library_root',BASE/'style-library')
+                result['authorMemories']=[style_memory.read(library_root,a,ctx['section_type']) for a in style_memory.AUTHORS] if ctx['section_type'] else []
+                return self.response(200,result)
             if path.path=='/api/settings':
                 if self.headers.get('X-Draft-Settings')!='1': return self.response(403,{'error':'请通过本地设置页面访问'})
                 with LOCK: config=read_config(self.server)
-                return self.response(200,{'settings':config})
+                return self.response(200,{'settings':config,'supportedFields':sorted(CONFIG_FIELDS)})
             if path.path.startswith('/api/agent-files'):
                 if self.headers.get('X-Draft-Instructions')!='1':return self.response(403,{'error':'请通过 Agent 管理页面访问'})
                 import agent_files
@@ -302,16 +392,37 @@ class Handler(BaseHTTPRequestHandler):
                 with LOCK:state=read_state(folder)
                 if not state.get('latex'):raise ValueError('当前不是 LaTeX 项目')
                 if path.path=='/api/latex/info':return self.response(200,{'latex':state['latex'],'revision':state['revision'],'compilerAvailable':bool(latex.compiler()),**latex.build_status(folder,state)})
+                if path.path=='/api/latex/selection-highlight':
+                    import paragraph_selection
+                    with LOCK:
+                        result=paragraph_selection.highlight(folder,state,query.get('v',[''])[0],query.get('sectionId',[''])[0],int(query.get('start',['-1'])[0]),int(query.get('end',['-1'])[0]),query.get('version',[''])[0])
+                    return self.response(200,result)
+                if path.path=='/api/latex/selection':
+                    import paragraph_selection
+                    with LOCK:
+                        result=paragraph_selection.resolve(folder,state,query.get('v',[''])[0],json.loads(query.get('points',['null'])[0]))
+                    return self.response(200,result)
+                if path.path=='/api/latex/inverse-search':
+                    with LOCK:
+                        result=latex.inverse_search(folder,state,query.get('v',[''])[0],int(query.get('page',['0'])[0]),float(query.get('x',['nan'])[0]),float(query.get('y',['nan'])[0]))
+                    return self.response(200,result)
                 if path.path=='/api/latex/file':
                     name=query.get('path',[''])[0];file=latex.source_path(folder,name)
                     if file.suffix.lower() not in latex.TEXT_EXT or file.stat().st_size>2*1024*1024:raise ValueError('该文件不可在文本编辑器中打开')
                     raw=file.read_bytes();return self.response(200,{'path':name,'text':raw.decode('utf-8'),'sha256':latex.digest(raw),'revision':state['revision']})
-                if path.path in {'/api/latex/pdf-info','/api/latex/pdf-page'}:
+                if path.path in {'/api/latex/pdf-info','/api/latex/pdf-page','/api/latex/pdf-text'}:
                     import pymupdf
+                    version=query.get('v',[''])[0]
+                    compiled=latex.build_status(folder,state)['compiled']
+                    if version and (not compiled or version not in {compiled['runId'],compiled.get('at')}):
+                        raise ValueError('PDF 已更新，请等待预览刷新后重试')
                     with pymupdf.open(folder/'.latex/compiled.pdf') as doc:
                         if path.path=='/api/latex/pdf-info':return self.response(200,{'pages':len(doc),'sizes':[[page.rect.width,page.rect.height] for page in doc]})
                         page=int(query.get('page',['1'])[0])
                         if not 1<=page<=len(doc):raise ValueError('PDF 页码无效')
+                        if path.path=='/api/latex/pdf-text':
+                            from pdf_text import page_text
+                            return self.response(200,page_text(doc[page-1]))
                         view=doc[page-1];scale=min(2,1600/max(view.rect.width,view.rect.height))
                         raw=view.get_pixmap(matrix=pymupdf.Matrix(scale,scale),alpha=False).tobytes('png');mime='image/png'
                 elif path.path=='/api/latex/pdf':raw=(folder/'.latex/compiled.pdf').read_bytes();mime='application/pdf'
@@ -325,7 +436,7 @@ class Handler(BaseHTTPRequestHandler):
             if path.path=='/en':
                 self.send_response(302);self.send_header('Location','/en/');self.end_headers();return
             name=(path.path[4:] if english else path.path.lstrip('/')) or 'index.html'
-            if name not in {'split-workspace.js','split-workspace.css','language.js','index.html','style.css','app.js','workspace.js','workspace-core.js','workspace.css','settings.js','providers.js','markdown.js','markdown.css','latex.js','latex.css','projects.js','projects.css','agent-files.js','agent-files.css','style-library.js','style-library.css','writing-strategy.js','writing-strategy.css'} and not re.fullmatch(r'vendor/(?:marked\.umd\.js|purify\.min\.js|katex\.min\.(?:js|css)|fonts/[A-Za-z0-9_-]+\.(?:woff2?|ttf))',name): return self.response(404,{'error':'Not found'})
+            if name not in {'preferences.js','preferences.css','overleaf.js','overleaf.css','split-workspace.js','split-workspace.css','language.js','index.html','style.css','app.js','workspace.js','workspace-core.js','workspace.css','settings.js','providers.js','markdown.js','markdown.css','latex.js','latex.css','projects.js','projects.css','agent-files.js','agent-files.css','style-library.js','style-library.css','writing-strategy.js','writing-strategy.css'} and not re.fullmatch(r'vendor/(?:marked\.umd\.js|purify\.min\.js|katex\.min\.(?:js|css)|fonts/[A-Za-z0-9_-]+\.(?:woff2?|ttf))',name): return self.response(404,{'error':'Not found'})
             raw=(BASE/'ui'/name).read_bytes()
             if english and not name.startswith('vendor/') and name.endswith(('.html','.js')):raw=localization.english_resource(name,raw.decode()).encode()
             self.send_response(200);self.send_header('Content-Type',mimetypes.guess_type(name)[0] or 'application/octet-stream');self.send_header('Content-Length',str(len(raw)));self.send_header('Cache-Control','no-store');self.send_header('X-Content-Type-Options','nosniff');self.end_headers();self.wfile.write(raw)
@@ -334,6 +445,43 @@ class Handler(BaseHTTPRequestHandler):
     def do_POST(self):
         if not self.allowed(): return self.response(403,{'error':'不允许跨来源写入Project'})
         route=urlparse(self.path).path
+        if route.startswith('/api/overleaf/'):
+            if self.headers.get('X-Draft-Overleaf')!='1':return self.response(403,{'error':'Open Overleaf sync from the workspace.'})
+            if not OVERLEAF_LOCK.acquire(blocking=False):return self.response(409,{'error':'An Overleaf operation is already running.'})
+            try:
+                import overleaf_sync
+                size=int(self.headers.get('Content-Length','0'))
+                if not 0<size<=256*1024:raise ValueError('Invalid sync request size.')
+                payload=json.loads(self.rfile.read(size))
+                if not isinstance(payload,dict):raise ValueError('Invalid sync request.')
+                action=route.removeprefix('/api/overleaf/')
+                folder,state=paper_snapshot(self.server,payload)
+                if not state.get('latex'):raise ValueError('Import a LaTeX project before connecting Overleaf.')
+                sync=overleaf_sync.Sync(getattr(self.server,'config_dir',BASE/'.local'),state['id'])
+                if action=='status':result=sync.status()
+                elif action=='connect':result=sync.connect(payload.get('url'),payload.get('token'))
+                elif action=='disconnect':result=sync.disconnect()
+                elif action=='preview':result=sync.preview(folder,state,payload.get('direction'))
+                elif action=='apply':
+                    with LOCK,RUNS_LOCK:
+                        if RUNS or LATEX_BUILD_LOCK.locked():return self.response(409,{'error':'Finish writing or compiling before syncing.'})
+                        state=read_state(folder)
+                        result=sync.apply(folder,state,payload.get('previewId'),payload.get('resolutions',{}),lambda updated:write_state(folder,updated,None))
+                else:raise ValueError('Unknown Overleaf operation.')
+                return self.response(200,result)
+            except (ValueError,KeyError,TypeError,OSError) as e:return self.response(400,{'error':str(e)})
+            finally:OVERLEAF_LOCK.release()
+        if route=='/api/preferences':
+            if self.headers.get('X-Draft-Preferences')!='1':return self.response(403,{'error':'请从写作偏好页面操作'})
+            try:
+                size=int(self.headers.get('Content-Length','0'))
+                if not 0<size<=20000:raise ValueError('偏好请求过大')
+                payload=json.loads(self.rfile.read(size))
+                if not isinstance(payload,dict):raise ValueError('偏好请求格式无效')
+                ctx,_,_=preference_context(self.server,payload)
+                result=preference_store(self.server).mutate(payload,ctx,getattr(self.server,'library_root',BASE/'style-library'))
+                return self.response(200,{'version':result})
+            except (ValueError,KeyError,TypeError,OSError) as e:return self.response(400,{'error':str(e)})
         if route=='/api/agent-files/save':
             if self.headers.get('X-Draft-Instructions')!='1':return self.response(403,{'error':'请通过 Agent 管理页面保存'})
             try:
@@ -382,6 +530,8 @@ class Handler(BaseHTTPRequestHandler):
                     if route.endswith('build-memory'):result=memory.build(root,payload.get('author'),payload.get('section'),strategy_generate,rules['instructions'])
                     else:
                         if target is None:raise ValueError('请先选择当前章节')
+                        import preferences
+                        rules['instructions']+=preferences.instructions(preference_store(self.server).snapshot(state['id'],target['id'],payload.get('section')))
                         result=memory.recommend(root,folder,state,target,payload.get('section'),payload.get('goal',''),payload.get('mode','auto'),strategy_generate,rules['instructions'])
                     return self.response(200,result)
                 if route=='/api/style-library/upload':
@@ -414,6 +564,10 @@ class Handler(BaseHTTPRequestHandler):
                 payload=json.loads(self.rfile.read(size))
                 if not isinstance(payload,dict):raise ValueError('Project 请求格式无效')
                 action=route.removeprefix('/api/projects/')
+                if action=='reveal-pdf':
+                    with LOCK:
+                        result=projects.reveal_pdf(self.server.root,payload.get('id'))
+                    return self.response(200,result)
                 if action not in {'rename','trash','restore'}:raise ValueError('未知 Project 操作')
                 with LOCK,RUNS_LOCK:
                     if RUNS or LATEX_BUILD_LOCK.locked():return self.response(409,{'error':'正在写作或编译，请完成后再管理 Project'})
@@ -435,7 +589,8 @@ class Handler(BaseHTTPRequestHandler):
                     return self.response(200,{'state':state,'folder':str(folder),'pdfData':None})
                 folder,state=paper_snapshot(self.server,payload)
                 if not state.get('latex'):raise ValueError('当前不是 LaTeX 项目')
-                if payload.get('revision')!=state['revision']:raise ValueError('源文件或Project已变化，请先重新载入')
+                # A file save is guarded by its own SHA below, not unrelated project changes.
+                if route!='/api/latex/file' and payload.get('revision')!=state['revision']:raise ValueError('源文件或Project已变化，请先重新载入')
                 if route=='/api/latex/compile':
                     if not LATEX_BUILD_LOCK.acquire(blocking=False):return self.response(409,{'error':'已有项目正在编译，请稍后重试'})
                     try:
@@ -447,7 +602,7 @@ class Handler(BaseHTTPRequestHandler):
                     return self.response(200,result)
                 with LOCK:
                     state=read_state(folder)
-                    if payload.get('revision')!=state['revision']:raise ValueError('稿件版本已变化，请重新载入')
+                    if route!='/api/latex/file' and payload.get('revision')!=state['revision']:raise ValueError('稿件版本已变化，请重新载入')
                     if route=='/api/latex/file':latex.edit_file(folder,state,payload.get('path'),payload.get('text'),payload.get('sha256'))
                     elif route=='/api/latex/main':
                         name=payload.get('main')
@@ -513,11 +668,38 @@ class Handler(BaseHTTPRequestHandler):
                 except (BrokenPipeError,ConnectionResetError,OSError): cancel.set();raise ValueError('连接已中断，Agent 已停止。') from None
             try:
                 emit({'type':'progress','message':'Gemini 只读取当前章节；需要背景时向 GPT 查证。'})
-                result=Agent(folder,state,target,prompt,generate,run_id,emit,cancel,assistant_generate=assistant_generate,instruction_base=getattr(self.server,'instruction_base',BASE),library_root=getattr(self.server,'library_root',BASE/'style-library')).run()
-                emit({'type':'result',**result,'provider':provider,'model':model})
+                agent=Agent(folder,state,target,prompt,generate,run_id,emit,cancel,assistant_generate=assistant_generate,instruction_base=getattr(self.server,'instruction_base',BASE),library_root=getattr(self.server,'library_root',BASE/'style-library'))
+                import preferences
+                store=preference_store(self.server);ctx=preferences.context(state,target)
+                ctx['section_type']=agent.reference_section if agent.reference_section!='unknown' else None
+                pref=store.snapshot(**ctx)
+                pref['legacyProjectPreferences']=agent.project_memory.get('preferences.md','')
+                agent.preference_snapshot=pref
+                agent.writer_rules['instructions']+=preferences.instructions(pref)
+                result=agent.run()
+                try:
+                    if result.get('finishReason')=='STOP' and not cancel.is_set():
+                        previous=next((m.get('text','') for m in reversed((target or state.get('general',{})).get('chat',[])) if m.get('role')=='model'),'')
+                        evidence=[]
+                        if preferences.signal(prompt) and re.search(r'\b(?:du|wei)\b|作者|参考|论文库',prompt,re.I) and ctx['section_type']:
+                            import style_memory
+                            for author in style_memory.AUTHORS:
+                                for e in style_memory.examples(agent.library_root,author,ctx['section_type'])[:4]:
+                                    evidence.append({'paperId':e['paper_id'],'chunkId':e['source_id'].split(':',1)[1],'quote':e['text'],'author':author,'sectionType':ctx['section_type']})
+                        result['preferenceLearning']=preferences.enqueue(store,ctx,prompt,result['answer'],previous,(target or {}).get('text',''),run_id,generate,agent.library_root,evidence)
+                except Exception:
+                    result['preferenceLearning']={'status':'failed','message':'偏好分析未启动，本轮写作结果已保留。'}
+                emit({'type':'result',**result,'provider':provider,'model':model,'reasoningEffort':generate.reasoning_effort})
             except Exception as e:
                 message=str(e) if isinstance(e,(ValueError,CloudError)) else 'Agent 运行未完成，请重试；当前稿未改写。'
-                try:emit({'type':'error','error':message})
+                from gemini_stream import StreamError
+                event={'type':'error','error':message}
+                if isinstance(e,StreamError):
+                    event['errorCode']=e.code
+                    from paper_tools import private_json
+                    try:private_json(folder/'.agent'/'runs'/run_id/'error.json',{'at':now(),'code':e.code,'message':message})
+                    except OSError:pass
+                try:emit(event)
                 except ValueError:pass
             finally:
                 with RUNS_LOCK: RUNS.pop(run_id,None)
@@ -542,7 +724,9 @@ class Handler(BaseHTTPRequestHandler):
                 config=json.loads(self.rfile.read(size))
                 with LOCK: write_config(self.server,config)
                 return self.response(200,{'saved':True})
-            except (ValueError,TypeError,OSError): return self.response(400,{'error':'无法保存配置，请检查输入或文件权限'})
+            except json.JSONDecodeError: return self.response(400,{'error':'配置文件或请求格式损坏，请检查本机配置文件；原有 Key 未被覆盖。'})
+            except (ValueError,TypeError) as e: return self.response(400,{'error':str(e) if isinstance(e,ValueError) else '配置格式无效'})
+            except OSError: return self.response(500,{'error':'无法写入本机配置文件，请检查文件权限和磁盘空间。'})
         if urlparse(self.path).path!='/api/save': return self.response(404,{'error':'Not found'})
         try:
             size=int(self.headers.get('Content-Length','0'))

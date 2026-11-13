@@ -68,21 +68,35 @@ class AgentTests(unittest.TestCase):
         self.assertTrue((self.folder/'.agent/runs/run-1/checkpoints.sqlite').exists())
         self.assertFalse((self.folder/'.agent/pdf-index.json').exists())
 
+    def test_selected_passage_is_sent_without_whole_section(self):
+        target=self.sections[0]
+        target.update(format='latex',source_file='body.tex',text='Unselected paragraph.\n\nChosen paragraph.')
+        target['selected_passage']={'start':23,'end':40,'text':'Chosen paragraph.','version':'v1','path':'body.tex'}
+        result,requests=self.run_agent([final('Discuss this paragraph.')])
+        payload=json.dumps(requests[0],ensure_ascii=False)
+        self.assertIn('Chosen paragraph.',payload)
+        self.assertIn('Unselected paragraph.',payload)
+        self.assertIn('read_only',payload)
+        self.assertIn('narrative_context',payload)
+        self.assertEqual(result['selection'],target['selected_passage'])
+
     def test_latex_writing_needs_neither_pdf_nor_gpt(self):
         self.sections[0].update(format='latex',filename='01-abstract.tex',source_file='sections/abstract.tex',text=r'\begin{abstract}Current $x=1$.\end{abstract}')
         self.state['latex']={'main':'main.tex'}
         with patch.object(PaperTools,'index',side_effect=AssertionError('PDF should not be read')):
-            result,requests=self.run_agent([final('```latex\n'+self.sections[0]['text']+'\n```')])
+            result,requests=self.run_agent([final('```latex-edit\n'+json.dumps({'edits':[{'old':'Current $x=1$.','new':'Revised $x=1$.'}]})+'\n```')])
         payload=json.dumps(requests[0],ensure_ascii=False)
         self.assertIn('sections/abstract.tex',payload)
-        self.assertIn('只替换当前源码块',payload)
+        self.assertIn('默认只修改目标段落',payload)
+        self.assertIn('latex-edit',payload)
+        self.assertNotIn('包含完整当前块',payload)
         self.assertNotIn('LATEST_EXPERIMENT',payload)
         self.assertEqual(result['assistantCalls'],0)
         self.assertEqual(result['baseVersion'],'v1')
 
     def test_reads_latest_other_section_only_when_called(self):
         result,requests=self.run_agent([call('ask_paper_assistant',{'question':'Verify the latest accuracy'}),final()],research=[research_call('read_section',{'section_id':'experiment'}),evidence()])
-        self.assertEqual([t['name'] for t in requests[0]['tools'][0]['functionDeclarations']],['ask_paper_assistant','find_style_examples','read_style_memory','recommend_writing_strategy'])
+        self.assertEqual([t['name'] for t in requests[0]['tools'][0]['functionDeclarations']],['ask_paper_assistant','find_style_examples','read_style_memory','recommend_writing_strategy','search_reference_papers','read_reference_paper'])
         self.assertNotIn('LATEST_EXPERIMENT',json.dumps(requests[0]))
         self.assertNotIn('LATEST_EXPERIMENT',json.dumps(self.research_requests[0]))
         self.assertIn('LATEST_EXPERIMENT',json.dumps(requests[1]))
@@ -177,6 +191,24 @@ class AgentTests(unittest.TestCase):
         event=threading.Event();event.set()
         with self.assertRaises(AgentStopped):
             WritingAgent(self.folder,self.state,self.sections[0],'hi',lambda *args:self.fail('cancelled model must not be called'),'cancel',cancel=event).run()
+
+    def test_new_conversation_excludes_old_messages_but_keeps_current_draft(self):
+        target=self.sections[0]
+        target['chat']=[{'role':'user','text':'OLD_REQUEST'},{'role':'model','text':'OLD_RESPONSE'}]
+        target['contextStart']=2
+        contents=initial_contents(self.state,target,'NEW_REQUEST')
+        self.assertEqual(len(contents),1)
+        self.assertNotIn('OLD_',json.dumps(contents))
+        self.assertIn('CURRENT_ABSTRACT',json.dumps(contents))
+        target['chat'].extend([{'role':'user','text':'FRESH_REQUEST'},{'role':'model','text':'FRESH_RESPONSE'}])
+        contents=initial_contents(self.state,target,'FOLLOWUP')
+        self.assertIn('FRESH_RESPONSE',json.dumps(contents))
+        self.assertNotIn('OLD_',json.dumps(contents))
+        self.state['general']={'chat':target['chat'],'contextStart':4}
+        self.assertEqual(len(initial_contents(self.state,None,'GENERAL_NEW')),1)
+        for invalid in [-1,999,'2',None,True]:
+            target['contextStart']=invalid
+            self.assertIn('OLD_REQUEST',json.dumps(initial_contents(self.state,target,'NEW')))
 
     def test_history_budget_and_uninitialized(self):
         self.sections[0]['chat']=[{'role':'user' if i%2==0 else 'model','text':'x'*10000} for i in range(20)]

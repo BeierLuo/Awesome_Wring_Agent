@@ -224,7 +224,7 @@ def export_zip(folder):
     return result.getvalue()
 
 def compiler():
-    bundled=BASE/'.tools/tectonic'
+    bundled=Path(os.environ.get('DRAFT_TOOLS_DIR',str(BASE/'.tools')))/'tectonic'
     return str(bundled) if bundled.is_file() else shutil.which('tectonic')
 
 def compile_project(folder,state,timeout=240,source_data=None):
@@ -235,10 +235,10 @@ def compile_project(folder,state,timeout=240,source_data=None):
     if main not in raw or not main.endswith('.tex'):raise ValueError('请选择有效主 .tex 文件')
     runid=uuid.uuid4().hex;build=folder/'.latex/builds'/runid;src=build/'source';out=build/'output';out.mkdir(parents=True)
     for n,data in raw.items():write(src/n,data)
-    cache=BASE/'.tools/tectonic-cache';cache.mkdir(parents=True,exist_ok=True)
+    cache=Path(os.environ.get('DRAFT_TOOLS_DIR',str(BASE/'.tools')))/'tectonic-cache';cache.mkdir(parents=True,exist_ok=True)
     env={k:v for k,v in os.environ.items() if k in {'PATH','LANG','LC_ALL','SYSTEMROOT'}}
     env.update(TECTONIC_CACHE_DIR=str(cache.resolve()),TECTONIC_UNTRUSTED_MODE='1',TMPDIR=str(build.resolve()))
-    command=[engine,'-X','compile','--untrusted','--keep-logs','--outdir',str(out.resolve()),main]
+    command=[engine,'-X','compile','--untrusted','--keep-logs','--synctex','--outdir',str(out.resolve()),main]
     if sys.platform=='darwin' and Path('/usr/bin/sandbox-exec').exists():
         def q(p):return json.dumps(str(Path(p).resolve()))
         read_paths=['/System','/usr','/bin','/sbin','/Library','/opt/homebrew','/private/etc','/private/var/db','/dev',src,out,Path(engine).parent,cache,build]
@@ -255,13 +255,20 @@ def compile_project(folder,state,timeout=240,source_data=None):
             os.killpg(process.pid,signal.SIGKILL);process.wait();code=-1;timed_out=True
     log=logpath.read_bytes()[-50000:].decode('utf-8',errors='replace')
     pdf=out/(Path(main).stem+'.pdf');ok=code==0 and pdf.is_file() and pdf.stat().st_size<=25*1024*1024 and pdf.read_bytes().startswith(b'%PDF-')
-    if ok:write(folder/'.latex/compiled.pdf',pdf.read_bytes())
+    if ok:
+        import synctex_mapping
+        sync=out/(Path(main).stem+'.synctex.gz')
+        mapping=synctex_mapping.read_mapping(sync,src,{n for n in raw if Path(n).suffix.lower() in TEXT_EXT}) if sync.exists() else {}
+        write(build/'source-map.json',json.dumps(mapping))
+        write(folder/'.latex/compiled.pdf',pdf.read_bytes())
     result={'ok':ok,'runId':runid,'sourceHash':actual_hash,'main':main,'compiler':'tectonic','exitCode':code,'at':now(),'log':log,'error':'编译超时，请检查日志后重试' if timed_out else ('编译器退出：'+str(code) if not ok else None)}
     write(folder/'.latex/last-build.json',json.dumps(result,ensure_ascii=False))
     if ok:write(folder/'.latex/pdf-build.json',json.dumps({k:v for k,v in result.items() if k!='log'},ensure_ascii=False))
     # Keep only recent disposable build snapshots; sources and source history remain intact.
     old_builds=sorted((folder/'.latex/builds').iterdir(),key=lambda p:p.stat().st_mtime,reverse=True)
+    retained=build_status(folder,state)['compiled']
     for old in old_builds[3:]:
+        if retained and old.name==retained['runId']:continue
         if old.is_dir() and not old.is_symlink():shutil.rmtree(old,ignore_errors=True)
     return result
 
@@ -270,3 +277,21 @@ def build_status(folder,state):
     compiled=json.loads(path.read_text()) if path.exists() else None
     latest=json.loads(last.read_text()) if last.exists() else None
     return {'compiled':compiled,'lastBuild':latest,'stale':bool(compiled and compiled['sourceHash']!=state['latex']['sourceHash'])}
+
+
+def inverse_search(folder,state,run_id,page,x,y):
+    import synctex_mapping
+    compiled=build_status(folder,state)['compiled']
+    if not compiled or compiled['runId']!=run_id:
+        raise ValueError('PDF 已更新，请等待预览刷新后重试')
+    refresh(folder,state)
+    if compiled['sourceHash']!=state['latex']['sourceHash']:
+        raise ValueError('源码已修改，请重新编译后定位')
+    mapping=folder/'.latex/builds'/compiled['runId']/'source-map.json'
+    if not mapping.exists():raise ValueError('请重新编译一次，以启用 PDF 双击定位')
+    result=synctex_mapping.locate(json.loads(mapping.read_text()),page,x,y)
+    file=source_path(folder,result['path'])
+    if file.suffix.lower() not in TEXT_EXT or file.stat().st_size>2*1024*1024:
+        raise ValueError('定位的文件不可编辑')
+    result.update(runId=run_id,sha256=digest(file.read_bytes()))
+    return result

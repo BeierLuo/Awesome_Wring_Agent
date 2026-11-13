@@ -1,4 +1,5 @@
 import copy,json,threading,unittest,urllib.request
+from unittest.mock import patch
 import test_http as http_fixture
 import server as s
 
@@ -8,6 +9,31 @@ class ProjectTests(unittest.TestCase):
     def action(self,action,revision=1,**extra):return self.post('/api/projects/'+action,{'id':'paper','revision':revision,**extra},{'X-Draft-Project':'1','Content-Type':'application/json'})
     def catalog(self,trash=False):
         with urllib.request.urlopen(f'http://127.0.0.1:{self.server.server_port}/api/projects'+('?trash=1' if trash else '')) as r:return json.load(r)['items']
+    def test_reveal_pdf_selects_original_and_compiled_without_changing_state(self):
+        folder=self.server.root/'paper'
+        before=(folder/'workspace.json').read_bytes()
+        with patch('projects.sys.platform','darwin'), patch('projects.subprocess.run') as run:
+            self.assertEqual(self.action('reveal-pdf')[0],200)
+            self.assertEqual(run.call_args.args[0],['open','-R',str((folder/'original.pdf').resolve())])
+            self.assertEqual((folder/'workspace.json').read_bytes(),before)
+            state=s.read_state(folder);state['latex']={'main':'main.tex'}
+            s.atomic(folder/'workspace.json',json.dumps(state))
+            run.reset_mock()
+            self.assertEqual(self.action('reveal-pdf')[0],400);run.assert_not_called()
+            (folder/'.latex').mkdir();(folder/'.latex/compiled.pdf').write_bytes(b'pdf')
+            self.assertEqual(self.action('reveal-pdf')[0],200)
+            self.assertEqual(run.call_args.args[0][-1],str((folder/'.latex/compiled.pdf').resolve()))
+
+    def test_reveal_rejects_unsafe_paths_and_missing_header(self):
+        folder=self.server.root/'paper'
+        with patch('projects.subprocess.run') as run:
+            self.assertEqual(self.post('/api/projects/reveal-pdf',{'id':'paper'})[0],403)
+            self.assertEqual(self.action('reveal-pdf',id='../paper')[0],400)
+            (folder/'original.pdf').unlink()
+            (folder/'original.pdf').symlink_to(self.server.root.parent/'outside.pdf')
+            self.assertEqual(self.action('reveal-pdf')[0],400)
+            run.assert_not_called()
+
     def test_catalog_rename_preserves_paper(self):
         folder=self.server.root/'paper';pdf=(folder/'original.pdf').read_bytes();config=s.read_config(self.server)
         self.assertEqual(self.catalog()[0]['type'],'PDF');self.assertEqual(self.catalog()[0]['sections'],1)

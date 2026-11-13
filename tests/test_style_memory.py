@@ -9,6 +9,14 @@ class StyleMemoryTests(unittest.TestCase):
   self.temp=tempfile.TemporaryDirectory();self.addCleanup(self.temp.cleanup);self.root=Path(self.temp.name);self.folder=self.root/'project';self.folder.mkdir();self.library=self.root/'library'
   self.target={'id':'intro','title':'Introduction','text':'Current manuscript facts','initialized':True,'versions':[{'id':'v1'}]};self.state={'sections':[self.target]}
   self.source={'source_id':'s1','paper_id':'p1','paper':'Paper A','page':2,'text':'Original','role':'gap','section':'Introduction','purpose':'Motivate','logic':'Gap -> solution','wording':'Restrained','sentence_moves':[]}
+ def test_unknown_and_parent_headings_do_not_fall_back_or_cross_sections(self):
+  self.assertIsNone(m.section_key('Custom Algorithm Name'))
+  self.assertIsNone(m.section_key('未知'))
+  for title,expected in [('Introduction: method overview','introduction'),('Appendix A. Experimental Results','appendix'),('Related Work: motivation','related_work'),('Results and Discussion','results'),('4. 方法','method'),('实验结果','experiments')]:
+   self.assertEqual(m.section_key(title),expected)
+  d=m.dashboard(self.library,self.folder,'Custom Algorithm Name',{**self.target,'title':'Custom Algorithm Name'})
+  self.assertIsNone(d['current_section']);self.assertEqual(d['available_memories'],[])
+
  def test_small_section_files_history_and_conflict(self):
   before=m.read(self.library,'hongxin','method');m.save(self.library,'hongxin','method','A method rule',before['sha256'])
   self.assertEqual(m.read(self.library,'hongxin','introduction')['text'],'')
@@ -29,6 +37,21 @@ class StyleMemoryTests(unittest.TestCase):
   rule['rules'][0]['source_ids']=['invented']
   with patch.object(m,'examples',return_value=[self.source]),patch.object(m,'json_result',return_value=rule):
    with self.assertRaises(ValueError):m.build(self.library,'hongxin','method',None,'rules')
+ def test_selected_strategy_receives_focus_and_read_only_neighbors(self):
+  prefix='Earlier context. '*1200
+  focus='Interpretation of the proposition.'
+  self.target.update(text=prefix+focus+' Following result.',selected_passage={'start':len(prefix),'end':len(prefix)+len(focus),'text':focus})
+  option={'title':'Interpretation','author':'hongxin','hook':'Theory','contribution_framing':'Explanation','paragraph_plan':['Conclusion','Mechanism'],'why_fit':'Narrative task','risks':[],'paper_ids':['p1'],'source_ids':['s1']}
+  result={'diagnosis':'Explain theory','missing_information':[],'options':[copy.deepcopy(option),copy.deepcopy(option)]}
+  with patch.object(m,'examples',return_value=[self.source]),patch.object(l,'catalog',return_value=[{'id':'p1','name':'HongxinWei_Paper.pdf'}]),patch.object(l,'read',return_value={'analyses':[{'overview':'Theory'}]}),patch.object(m,'json_result',return_value=result) as generate:
+   m.recommend(self.library,self.folder,self.state,self.target,'introduction','Explain','hongxin',None,'rules')
+  current=generate.call_args.args[2]['current_paper']
+  self.assertEqual(current['text'],focus)
+  self.assertEqual(current['scope'],'selected_passage')
+  self.assertTrue(current['narrative_context']['read_only'])
+  self.assertEqual(len(current['narrative_context']['before']),2400)
+  self.assertEqual(current['narrative_context']['after'],' Following result.')
+
  def test_candidates_persist_but_require_version_checked_adoption(self):
   option={'title':'Mechanism first','author':'hongxin','hook':'Hypothesis to verify','contribution_framing':'Simple correction','paragraph_plan':['Problem','Mechanism','Contribution'],'why_fit':'Fits supplied evidence','risks':['Verify mechanism'],'paper_ids':['p1'],'source_ids':['s1']}
   result={'diagnosis':'Two possible routes','missing_information':[],'options':[copy.deepcopy(option),copy.deepcopy(option)]}

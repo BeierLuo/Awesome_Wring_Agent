@@ -1,0 +1,7 @@
+#workspace-tabs #overleaf-open{font-size:11px;padding:5px 8px;border:1px solid #d8d2c6;border-radius:6px;white-space:nowrap}
+#overleaf-dialog{width:min(780px,94vw)}
+.overleaf-actions{display:flex;align-items:center;flex-wrap:wrap;gap:10px;margin:14px 0}.overleaf-actions button{font-size:12px}
+#overleaf-status{white-space:pre-wrap;font-size:13px;color:#916044}#overleaf-connection{font-size:12px}
+#overleaf-changes{max-height:36dvh;overflow:auto}#overleaf-changes details{border:1px solid #ded7cb;border-radius:7px;padding:10px;margin:8px 0}
+#overleaf-changes summary{cursor:pointer;font-size:12px;overflow-wrap:anywhere}#overleaf-changes pre{font:11px/1.6 ui-monospace,monospace;white-space:pre-wrap;overflow-wrap:anywhere;max-height:200px;overflow:auto;background:#f2efe8;padding:10px}
+#overleaf-skipped{font-size:11px;overflow-wrap:anywhere}#overleaf-apply{margin-top:12px}

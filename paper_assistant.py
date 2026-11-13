@@ -59,7 +59,9 @@ class PaperAssistant:
                     img=o.tools.image(page)
                     content.extend([{'type':'input_text','text':f'{o.tools.pdf_source} physical page {page}'},{'type':'input_image','image_url':'data:'+img['mimeType']+';base64,'+img['data'],'detail':'high'}])
                 item['output']=content
-        body={'instructions':o.research_rules['instructions'],'input':items,'tools':TOOLS,'tool_choice':'auto','parallel_tool_calls':False,'store':False,'include':['reasoning.encrypted_content'],'max_output_tokens':6000,'text':{'format':{'type':'json_schema','name':'paper_evidence','strict':True,'schema':SCHEMA}}}
+        from writing_agent import REFERENCE_TOOLS
+        reference_tools=[{'type':'function',**lower_schema(t),'strict':False} for t in REFERENCE_TOOLS]
+        body={'instructions':o.research_rules['instructions'],'input':items,'tools':TOOLS+reference_tools,'tool_choice':'auto','parallel_tool_calls':False,'store':False,'include':['reasoning.encrypted_content'],'max_output_tokens':6000,'text':{'format':{'type':'json_schema','name':'paper_evidence','strict':True,'schema':SCHEMA}}}
         o.emit({'type':'progress','message':'GPT 正在核查论文资料…'})
         result=o.assistant_generate(body,max(1,min(90,o.deadline-time.monotonic())))
         o.check();o.assistant_calls+=1
@@ -77,6 +79,7 @@ class PaperAssistant:
         elif name=='read_pdf_pages':
             records=output.get('pages',[])
             for record in records:record['source']=output.get('source','original_pdf')
+        elif name=='read_reference_paper':records=[{'paper':output['paper'],'source':'reference_library','section':output['section'],'text':output['text'],'pages':[s['page'] for s in output['sources']],'reference_sources':output['sources']}] if output.get('text') else []
         else:records=[]
         for record in records:
             sid=f'q{self.number}-s{len(self.sources)+1}'
@@ -92,9 +95,15 @@ class PaperAssistant:
             try:
                 o.read_count+=1
                 args=json.loads(call.get('arguments','{}'))
-                output=o.tools.execute(name,args);self.register(name,output)
+                if name in {'search_reference_papers','read_reference_paper'}:
+                    from writing_agent import reference_tool
+                    output=reference_tool(o.library_root,name,args,o.style_settings['paper_ids'])
+                else:output=o.tools.execute(name,args)
+                self.register(name,output)
                 payload={'output':output}
-                if name=='read_section':event.update(source=output.get('file',output.get('id','')),version=output.get('version'),initialized=output.get('initialized',True))
+                if name=='search_reference_papers':event.update(matches=output['total'])
+                elif name=='read_reference_paper':event.update(paper=output['paper'],section=output['section'])
+                elif name=='read_section':event.update(source=output.get('file',output.get('id','')),version=output.get('version'),initialized=output.get('initialized',True))
                 elif name=='read_pdf_pages':event.update(pages=[p['page'] for p in output['pages']],source=output.get('source'),mode=args.get('mode','text'))
                 elif name=='search_paper':event.update(matches=len(output['matches']))
                 elif name=='list_sections':event.update(sections=len(output['sections']))

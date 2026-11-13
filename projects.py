@@ -1,5 +1,5 @@
 """Project catalog and reversible moves; paper contents and credentials stay intact."""
-import json, os
+import json, os, subprocess, sys
 from pathlib import Path
 
 def project_folder(root,ident,trashed=False):
@@ -53,3 +53,23 @@ def change(root,action,payload):
         os.rename(folder,target);(target/'.project-trash.json').unlink(missing_ok=True)
     else:raise ValueError('未知 Project 操作')
     return {'id':ident,'revision':state['revision'],'name':state.get('name')}
+
+
+def reveal_pdf(root, ident):
+    """Reveal the project PDF using a fixed path, never a client-supplied filename."""
+    folder=project_folder(root,ident)
+    state=json.loads((folder/'workspace.json').read_text())
+    pdf=folder/('.latex/compiled.pdf' if state.get('latex') else 'original.pdf')
+    if pdf.is_symlink() or pdf.parent.is_symlink() or not pdf.resolve().is_relative_to(folder.resolve()):
+        raise ValueError('PDF 路径无效')
+    if not pdf.is_file():
+        raise ValueError('尚未生成 PDF，请先编译项目。' if state.get('latex') else '此项目尚未导入 PDF。')
+    path=str(pdf.resolve())
+    if sys.platform=='darwin':command=['open','-R',path]
+    elif sys.platform=='win32':command=['explorer','/select,',path]
+    else:command=['xdg-open',str(pdf.resolve().parent)]
+    try:
+        subprocess.run(command,check=True,timeout=10,capture_output=True)
+    except (OSError,subprocess.SubprocessError):
+        raise ValueError('无法打开文件管理器。PDF 位置：'+path) from None
+    return {'path':path}

@@ -9,9 +9,14 @@
 !/启动写作工作区.command
 !/agent_files.py
 !/gemini_stream.py
+!/openai_writer.py
 !/latex_project.py
+!/synctex_mapping.py
+!/pdf_text.py
+!/remote_bridge.py
 !/paper_assistant.py
 !/paper_tools.py
+!/paragraph_selection.py
 !/projects.py
 !/server.py
 !/style_library.py
@@ -45,6 +50,7 @@
 # Tests with synthetic fixtures
 !/tests/
 !/tests/test_*.py
+!/tests/check_remote_integration.py
 !/tests/test_*.cjs
 !/tests/package.json
 !/tests/package-lock.json
@@ -78,4 +84,39 @@ __pycache__/
 
 # Shared English UI catalog and resource localizer
 !/localization.py
+!/overleaf_sync.py
 !/ui/translations-en.json
+
+# Draft brand artwork and web-sized derivatives
+!/ui/assets/
+!/ui/assets/draft-logo.png
+!/ui/assets/draft-logo-128.png
+!/ui/assets/draft-favicon-64.png
+
+# Native macOS shell (generated .app stays local)
+!/macos/
+!/macos/Draft.swift
+!/macos/serve.py
+!/macos/build.py
+
+!/macos/install_environment.py
+!/macos/check_installation.py
+
+!/preferences.py
+!/AGENTS.md
+
+!/macos/cleanup_releases.py
+
+!/macos/caret.icns
+!/ui/assets/caret/
+!/ui/assets/caret/**
+
+# Per-change development and release history
+!/CHANGELOG.md
+
+# Reviewed release artifacts
+!/releases/
+!/releases/v0.3.3/
+!/releases/v0.3.3/Caret.dmg
+!/releases/v0.3.3/SHA256SUMS
+!/releases/v0.3.3/README.md

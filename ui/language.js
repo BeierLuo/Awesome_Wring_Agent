@@ -6,8 +6,8 @@
   window.DraftLanguage = {systemText(text) {
     if (!english || typeof text !== 'string') return text;
     if (catalog[text]) return catalog[text];
-    const round = text.match(/^Gemini 第 (\d+) 轮生成 · 已调用 (\d+(?:\/\d+)?) 个工具$/);
-    if (round) return `Gemini generation round ${round[1]} · ${round[2]} tools used`;
+    const round = text.match(/^(Gemini|OpenAI) 第 (\d+) 轮生成 · 已调用 (\d+(?:\/\d+)?) 个工具$/);
+    if (round) return `${round[1]} generation round ${round[2]} · ${round[3]} tools used`;
     if (text.startsWith('开始：')) {
       const [label, ...detail] = text.slice(3).split(' · ');
       return 'Starting: ' + (catalog[label] || label) + (detail.length ? ' · ' + detail.join(' · ') : '');

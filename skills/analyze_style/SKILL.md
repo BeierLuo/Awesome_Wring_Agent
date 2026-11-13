@@ -11,3 +11,5 @@ purpose 说明段落对全文的作用；logic 说明与上下文的衔接及段
 
 严格输出 JSON 对象，只有 overview 和 examples 两个顶层字段。overview 最多600字，只写整体组织，不得把逐段分析塞入 overview。每段分析必须作为 examples 数组中的独立对象；通常选择3–6个范例，最多8个。只有输入完全是参考文献/纯公式时 examples 才可为空。
 每个例子的 role 必须使用以下英文枚举之一：background, gap, motivation, contribution, method, experiment, result, limitation, conclusion；不得填中文解释，解释放 purpose。paragraph_id 必须逐字复制输入 id。sentence_moves 使用字符串数组。各分析字段保持简洁，不重复原文。
+
+在已有 purpose/logic/sentence_moves 字段内明确细粒度叙事任务（例如方法引入、理论陈述、理论解释、总结过渡），不要只重复 method 等粗角色。purpose 说明对章节目标的贡献；logic 区分前后衔接与段内推进，只依据可见上下文，未知就说明未知。位置不等于作用，理论结果后的直觉解释应区别于参数扩展和公式引入。

@@ -67,14 +67,14 @@ $('latex-file-picker').onchange=async()=>{if(fileDirty()&&!confirm('放弃尚未
 function closeLatexFile(){if(fileDirty()&&!confirm('放弃尚未保存的源文件编辑？'))return;$('latex-file-dialog').close();latexOpenedFile=null;}
 $('latex-file-close').onclick=closeLatexFile;$('latex-file-dialog').addEventListener('cancel',e=>{e.preventDefault();closeLatexFile();});
 $('latex-file-save').onclick=async()=>{
-  if(!latexOpenedFile||busy)return;setBusy(true);$('latex-file-status').textContent='正在保存…';
+  if(!latexOpenedFile||busy)return false;setBusy(true);$('latex-file-status').textContent='正在保存…';
   try{const result=await latexRequest('file',{path:latexOpenedFile.path,text:$('latex-source').value,sha256:latexOpenedFile.sha256,revision:latexFileRevision});
-    reconcileLatexState(result.state);folder=result.folder;await openLatexFile(latexOpenedFile.path);renderSections();renderChat();$('save-indicator').textContent='源文件已保存到本地';$('latex-file-status').textContent='源文件和章节已同步。重新编译即可更新 PDF。';
-  }catch(e){$('latex-file-status').textContent=e.message;}finally{setBusy(false);}
+    reconcileLatexState(result.state);folder=result.folder;await openLatexFile(latexOpenedFile.path);renderSections();renderChat();$('save-indicator').textContent='源文件已保存到本地';$('latex-file-status').textContent='源文件和章节已同步。重新编译即可更新 PDF。';return true;
+  }catch(e){$('latex-file-status').textContent=e.message;return false;}finally{setBusy(false);}
 };
 $('latex-compile').onclick=async()=>{
   if(busy||latexCompiling||!project?.latex)return;clearTimeout(inputTimer);if(!await persist())return;
-  latexCompiling=true;setBusy(true);$('stop').hidden=true;localStatus('正在本地编译 PDF…首次编译可能需要下载宏包，请稍候。');showLatexBuild();
+  latexCompiling=true;setBusy(true);$('send').disabled=true;localStatus('正在本地编译 PDF…首次编译可能需要下载宏包，请稍候。');showLatexBuild();
   try{const result=await latexRequest('compile',{},AbortSignal.timeout(270000));await refreshLatexInfo();localStatus(result.ok?'PDF 编译成功，可点击“查看编译 PDF”。':'编译失败，请展开“编译日志”查看具体错误。');}
   catch(e){localStatus(e.message);try{await refreshLatexInfo();}catch{}}
   finally{latexCompiling=false;setBusy(false);showLatexBuild();}

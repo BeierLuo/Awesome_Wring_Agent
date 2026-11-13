@@ -31,7 +31,7 @@ function renderProjectList(){
       const save=()=>projectAction('rename',item,{name:input.value});input.onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();save();}};
       actions.append(projectButton('保存名称',save),projectButton('取消',()=>{projectRenaming=null;renderProjectList();}));
     }else if(projectTrash){actions.append(projectButton('恢复',()=>projectAction('restore',item)));}
-    else{actions.append(projectButton(item.id===project?.id?'继续写作':'打开',()=>openManagedProject(item)),projectButton('重命名',()=>{projectRenaming=item.id;renderProjectList();}),projectButton('移入回收站',()=>{if(confirm('将“'+item.name+'”移入回收站？论文、对话和版本会保留，可随时恢复。'))projectAction('trash',item);},'project-danger'));}
+    else{actions.append(projectButton(item.id===project?.id?'继续写作':'打开',()=>openManagedProject(item)),projectButton('打开 PDF 位置',()=>manageTask(async()=>{const result=await revealProjectPDF(item.id);$('projects-feedback').textContent='已打开 PDF 位置：'+result.path;})),projectButton('重命名',()=>{projectRenaming=item.id;renderProjectList();}),projectButton('移入回收站',()=>{if(confirm('将“'+item.name+'”移入回收站？论文、对话和版本会保留，可随时恢复。'))projectAction('trash',item);},'project-danger'));}
     row.append(info,actions);list.append(row);
   }
 }
@@ -61,3 +61,14 @@ $('projects-dialog').addEventListener('cancel',e=>{if(projectManaging)e.preventD
 for(const [id,trash] of [['projects-active',false],['projects-trash',true]])$(id).onclick=async()=>{await manageTask(async()=>{projectTrash=trash;projectRenaming=null;await fetchProjects();$('projects-feedback').textContent='';});};
 $('projects-refresh').onclick=()=>manageTask(async()=>{await fetchProjects();$('projects-feedback').textContent='列表已更新。';});
 $('projects-search').oninput=renderProjectList;
+
+async function revealProjectPDF(id){
+  if(!id)throw new Error('请先打开 Project。');
+  return localAPI('/api/projects/reveal-pdf',{method:'POST',headers:{'Content-Type':'application/json','X-Draft-Project':'1'},body:JSON.stringify({id})});
+}
+$('pdf-reveal').onclick=async()=>{
+  const button=$('pdf-reveal');button.disabled=true;
+  try{const result=await revealProjectPDF(project?.id);localStatus('已打开 PDF 位置：'+result.path);}
+  catch(e){localStatus(e.message);}
+  finally{button.disabled=false;}
+};

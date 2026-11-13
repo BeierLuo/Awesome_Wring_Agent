@@ -1,0 +1,36 @@
+const assert=require('node:assert/strict');
+const W=require('../ui/workspace-core.js');
+const original='\\section{Method}\r\n\\label{sec:method}\r\n\r\nFirst paragraph with \\cite{a}.\r\n\r\nSecond paragraph $x=1$.\r\n\r\n\\input{details}\r\n';
+const s={text:original,initialized:true,versions:[{id:'v1',text:original}],source_file:'main.tex',format:'latex'};
+const entry=edits=>({id:'reply',baseVersion:'v1',text:'Changed paragraphs.\n```latex-edit\n'+JSON.stringify({edits})+'\n```'});
+const edits=[{old:'First paragraph with \\cite{a}.',new:'Revised paragraph with \\cite{a}.'},{old:'Second paragraph $x=1$.',new:'Improved paragraph $x=1$.'}];
+const pending=W.latexRevision(s,entry(edits));
+assert.equal(s.text,original,'Preparing a proposal must not change the draft');
+assert.equal(pending.text,original.replace(edits[0].old,edits[0].new).replace(edits[1].old,edits[1].new));
+s.pending=pending;W.accept(s);assert.equal(s.text,pending.text);assert.equal(s.versions.length,2);
+assert.throws(()=>W.latexRevision(s,entry(edits)),/当前版本/);
+const base={...s,text:original,versions:[{id:'v1'}]};
+for(const edits of [[],[{old:'missing',new:'replacement'}],[{old:'paragraph',new:'ambiguous'}],[{old:'',new:'insert'}],[{old:'First paragraph',new:'a'},{old:'paragraph with',new:'b'}],[{old:'First',new:'a'},{old:'First',new:'b'}],[{old:'First'}]])assert.throws(()=>W.latexRevision(base,entry(edits)));
+assert.equal(base.text,original,'Rejected edits must leave source untouched');
+for(const text of ['```latex-edit\ninvalid\n```','```latex-edit\n{}','```latex-edit\n{}\n```\n```latex\nfull\n```',entry(edits).text+'\n'+entry(edits).text])assert.throws(()=>W.latexRevision(base,{baseVersion:'v1',text}));
+// All matches use the original source, so replacements cannot cascade.
+assert.equal(W.latexRevision({...base,text:'AAA BBB'},entry([{old:'AAA',new:'BBB'},{old:'BBB',new:'CCC'}])).text,'BBB CCC');
+assert.equal(W.latexRevision(base,entry([{old:'Second paragraph $x=1$.',new:''}])).text,original.replace('Second paragraph $x=1$.',''));
+assert.throws(()=>W.latexRevision({...base,text:'aaaa'},entry([{old:'aaa',new:'b'}])),/位置不唯一/);
+console.log('LaTeX paragraph revision tests passed');
+// Persistent selection follows the adopted paragraph, with Unicode-safe request offsets.
+const focused={format:'latex',initialized:true,text:'😀 heading\n\nOriginal paragraph.\n\nTail',versions:[{id:'v1'}]};
+const start=focused.text.indexOf('Original'),end=focused.text.indexOf('\n\nTail');
+focused.paragraphTarget={start,end,text:focused.text.slice(start,end),version:'v1'};
+const focus=W.selectionRequest(focused);assert.equal(focus.start,start-1);
+const focusedReply={...entry([{old:'Original paragraph.',new:'Revised longer paragraph.'}]),selection:focus};
+focused.pending=W.latexRevision(focused,focusedReply);W.accept(focused);
+assert.equal(W.selectionRequest(focused).text,'Revised longer paragraph.');
+assert.equal(focused.text,'😀 heading\n\nRevised longer paragraph.\n\nTail');
+assert.throws(()=>W.latexRevision(focused,{...entry([{old:'Tail',new:'Changed outside scope'}]),baseVersion:focused.versions.at(-1).id,selection:W.selectionRequest(focused)}));
+W.commit(focused,'New prefix '+focused.text,'manual');
+assert.equal(W.selectionRequest(focused).text,'Revised longer paragraph.');
+W.commit(focused,focused.text.replace('Revised longer paragraph.',''),'delete');
+assert.throws(()=>W.selectionRequest(focused),/已变化/);
+const duplicate={text:'same\n\nsame',versions:[{id:'v1'}]};
+assert.equal(W.latexRevision(duplicate,{...entry([{old:'same',new:'new'}]),selection:{start:6,end:10,text:'same',version:'v1'}}).text,'same\n\nnew');
