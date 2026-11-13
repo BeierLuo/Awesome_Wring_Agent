@@ -1,5 +1,14 @@
 # Caret changelog
 
+## 0.3.4 — 2026-11-13
+
+- Confirm a chapter type, including Motivation, independently of generating or adopting a writing plan.
+- Preserve the choice per chapter and use it for subsequent chat reference lookups.
+- Show save failures and disabled-strategy status; preserve manuscript text and other writing settings.
+- Include English labels and documented access steps.
+
+Validation: section-type UI and HTTP regressions, next-chat context, existing style-memory and main UI checks, and macOS installation checks.
+
 ## 0.3.3 — 2026-11-13
 
 - Use a white workspace with a subtle gray sidebar.

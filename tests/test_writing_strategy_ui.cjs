@@ -1,0 +1,30 @@
+const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path');
+const {JSDOM}=require('jsdom'),root=path.resolve(__dirname,'..');
+const dom=new JSDOM(fs.readFileSync(path.join(root,'ui/index.html'),'utf8'),{url:'http://127.0.0.1/',runScripts:'outside-only'}),w=dom.window,$=id=>w.document.getElementById(id);
+w.HTMLDialogElement.prototype.showModal=function(){this.open=true};w.HTMLDialogElement.prototype.close=function(){this.open=false};
+w.eval(`var $=id=>document.getElementById(id),project={id:'paper'},busy=false,loadingFile=false,target={id:'one'};function selected(){return target};function localStatus(){};`);
+let saved={},requests=[],fail=false,mode='auto';
+w.libraryAPI=async(url,body)=>{
+ requests.push({url,body});
+ if(url.startsWith('/strategy?'))return {settings:{mode,goal:'Keep goal',section_types:{...saved}},sections:{motivation:'Motivation',method:'Method'},dashboard:mode==='off'?null:{current_section:saved.one||null}};
+ assert.equal(url,'/section-type','Confirming a type must not generate a strategy');
+ if(fail)throw new Error('Save failed');
+ saved[body.sectionId]=body.section;return {mode,section_types:{...saved}};
+};
+w.eval(fs.readFileSync(path.join(root,'ui/writing-strategy.js'),'utf8'));
+(async()=>{
+ await $('library-open').onclick();
+ await $('strategy-section-save').onclick();assert.equal(requests.length,1,'Empty choice does not save');
+ $('strategy-section').value='motivation';$('strategy-section').dispatchEvent(new w.Event('change'));
+ assert.match($('strategy-section-status').textContent,/尚未保存/);
+ await $('strategy-section-save').onclick();
+ assert.equal(saved.one,'motivation');assert.match($('strategy-section-status').textContent,/已确认/);
+ $('strategy-close').click();await $('library-open').onclick();assert.equal($('strategy-section').value,'motivation');
+ fail=true;$('strategy-section').value='method';await $('strategy-section-save').onclick();
+ assert.equal(saved.one,'motivation');assert.equal($('strategy-section-status').textContent,'Save failed');assert.equal($('strategy-section-save').disabled,false);
+ fail=false;w.eval("target={id:'other'}");const count=requests.length;await $('strategy-section-save').onclick();assert.equal(requests.length,count,'Never save to a different selected section');
+ w.eval('target=null');await $('library-open').onclick();assert.equal($('strategy-section-save').disabled,true);
+ w.eval("target={id:'one'}");mode='off';await $('library-open').onclick();assert.equal($('strategy-section').value,'motivation');
+ await $('strategy-section-save').onclick();assert.match($('strategy-section-status').textContent,/已关闭/);
+ dom.window.close();console.log('PASS: independent section confirmation, reopening, errors, section isolation and disabled strategies');
+})().catch(e=>{dom.window.close();console.error(e);process.exitCode=1;});

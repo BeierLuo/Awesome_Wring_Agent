@@ -506,7 +506,7 @@ class Handler(BaseHTTPRequestHandler):
                 if not 0<size<=35*1024*1024:raise ValueError('论文库请求过大')
                 payload=json.loads(self.rfile.read(size));root=getattr(self.server,'library_root',BASE/'style-library')
                 if not isinstance(payload,dict):raise ValueError('论文库请求格式无效')
-                if route in {'/api/style-library/recommend','/api/style-library/adopt-strategy','/api/style-library/strategy-settings','/api/style-library/save-memory','/api/style-library/build-memory'}:
+                if route in {'/api/style-library/recommend','/api/style-library/adopt-strategy','/api/style-library/strategy-settings','/api/style-library/section-type','/api/style-library/save-memory','/api/style-library/build-memory'}:
                     import style_memory as memory,agent_files
                     folder=None;state=None;target=None
                     if route not in {'/api/style-library/save-memory','/api/style-library/build-memory'}:
@@ -515,7 +515,12 @@ class Handler(BaseHTTPRequestHandler):
                             if folder.is_symlink() or not (folder/'workspace.json').is_file():raise ValueError('Project 不存在')
                             state=read_state(folder)
                         target=next((s for s in state['sections'] if s['id']==payload.get('sectionId')),None)
-                    if route=='/api/style-library/strategy-settings':return self.response(200,memory.set_settings(folder,payload.get('mode'),payload.get('goal','')))
+                    if route=='/api/style-library/section-type':
+                        with LOCK:result=memory.set_section_type(folder,read_state(folder),payload.get('sectionId'),payload.get('section'))
+                        return self.response(200,result)
+                    if route=='/api/style-library/strategy-settings':
+                        with LOCK:result=memory.set_settings(folder,payload.get('mode'),payload.get('goal',''))
+                        return self.response(200,result)
                     if route=='/api/style-library/adopt-strategy':
                         with LOCK:result=memory.adopt(folder,read_state(folder),payload.get('proposal_id'),payload.get('index'))
                         return self.response(200,result)

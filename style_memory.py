@@ -114,6 +114,13 @@ def set_settings(folder,mode,goal):
     value={'mode':mode,'goal':goal,'section_types':settings(folder).get('section_types',{})};library.write(Path(folder)/'writing-strategy.json',value)
     library.write(Path(folder)/'style-reference.json',{'paper_ids':[],'role':'','query':''})
     return value
+def set_section_type(folder,state,section_id,section):
+    if not isinstance(section,str) or section not in SECTIONS:raise ValueError('请选择已支持的章节类型')
+    if not isinstance(section_id,str) or not any(s['id']==section_id for s in state['sections']):raise ValueError('请先选择当前章节')
+    config=settings(folder)
+    config.setdefault('section_types',{})[section_id]=section
+    library.write(Path(folder)/'writing-strategy.json',config)
+    return config
 def plan_path(folder,section):
     if section not in SECTIONS:raise ValueError('章节无效')
     p=Path(folder)/'memory/writing'/f'{section}.json'

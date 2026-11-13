@@ -1163,5 +1163,11 @@
   "此版本不存在": "Not present in this version",
   "Git 原始差异": "Raw Git diff",
   "发送消息（Enter；Shift+Enter 换行）": "Send message (Enter; Shift+Enter for a new line)",
-  "Enter 发送 · Shift+Enter 换行 · 确认后写入本地文件": "Enter to send · Shift+Enter for a new line · Changes saved after confirmation"
+  "Enter 发送 · Shift+Enter 换行 · 确认后写入本地文件": "Enter to send · Shift+Enter for a new line · Changes saved after confirmation",
+  "当前章节类型": "Current section type",
+  "确认章节类型": "Confirm section type",
+  "章节类型尚未保存，请点击“确认章节类型”。": "Section type not saved. Click \u201cConfirm section type\u201d.",
+  "章节类型已确认。写作策略当前已关闭，启用后生效。": "Section type confirmed. Writing strategies are off; enable them to use this type.",
+  "章节类型已确认，下一条消息将按此类型查阅规则与范例。": "Section type confirmed. The next message will use this type to look up rules and examples.",
+  "请选择已支持的章节类型": "Select a supported section type"
 }

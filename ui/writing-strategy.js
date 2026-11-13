@@ -1,13 +1,25 @@
 'use strict';
-let strategyProject=null,strategyProposal=null,strategyMemory=null,strategyBusy=false;
+let strategySectionId=null,strategyProject=null,strategyProposal=null,strategyMemory=null,strategyBusy=false;
 function strategyStatus(text){$('strategy-status').textContent=text;}
-function strategyWorking(value){strategyBusy=value;for(const id of ['strategy-close','strategy-library','strategy-recommend','strategy-mode','strategy-section','strategy-goal','strategy-enable','strategy-memory-read','strategy-memory-save','strategy-memory-build','strategy-author'])$(id).disabled=value;document.querySelectorAll('.strategy-adopt').forEach(b=>b.disabled=value);}
+function strategyWorking(value){strategyBusy=value;for(const id of ['strategy-close','strategy-library','strategy-recommend','strategy-mode','strategy-section','strategy-goal','strategy-section-save','strategy-enable','strategy-memory-read','strategy-memory-save','strategy-memory-build','strategy-author'])$(id).disabled=value;document.querySelectorAll('.strategy-adopt').forEach(b=>b.disabled=value);$('strategy-section-save').disabled=value||!strategySectionId;}
 const originalLibraryOpen=$('library-open').onclick;
 $('library-open').textContent='写作策略 · 论文库';
 $('library-open').onclick=async()=>{
  if(busy||loadingFile)return;if(!project){localStatus('请先新建或打开一个 Project。');return;}
- strategyProject=project.id;strategyProposal=null;strategyMemory=null;$('strategy-memory-editor').hidden=true;$('strategy-options').replaceChildren();$('strategy-dialog').showModal();strategyWorking(true);
- try{const result=await libraryAPI('/strategy?'+new URLSearchParams({workspaceId:strategyProject,sectionId:selected()?.id||''}));$('strategy-mode').value=result.settings.mode;$('strategy-goal').value=result.dashboard?.selected_plan?.goal||result.settings.goal;$('strategy-section').replaceChildren(...Object.entries(result.sections).map(([k,v])=>new Option(v,k)));$('strategy-section').prepend(new Option('请选择当前章节类型',''));$('strategy-section').value=result.dashboard?.current_section||'';strategyStatus('无需先指定论文。GPT 会结合当前章节、hook 和贡献比较不同写法；推荐是待选方案，不自动改稿。');}catch(e){strategyStatus(e.message);}finally{strategyWorking(false);}
+ strategyProject=project.id;strategySectionId=selected()?.id||null;$('strategy-section-status').textContent='';strategyProposal=null;strategyMemory=null;$('strategy-memory-editor').hidden=true;$('strategy-options').replaceChildren();$('strategy-dialog').showModal();strategyWorking(true);
+ try{const result=await libraryAPI('/strategy?'+new URLSearchParams({workspaceId:strategyProject,sectionId:strategySectionId||''}));$('strategy-mode').value=result.settings.mode;$('strategy-goal').value=result.dashboard?.selected_plan?.goal||result.settings.goal;$('strategy-section').replaceChildren(...Object.entries(result.sections).map(([k,v])=>new Option(v,k)));$('strategy-section').prepend(new Option('请选择当前章节类型',''));$('strategy-section').value=result.settings.section_types?.[strategySectionId]||result.dashboard?.current_section||'';strategyStatus('无需先指定论文。GPT 会结合当前章节、hook 和贡献比较不同写法；推荐是待选方案，不自动改稿。');}catch(e){strategyStatus(e.message);}finally{strategyWorking(false);}
+};
+$('strategy-section').onchange=()=>{$('strategy-section-status').textContent='章节类型尚未保存，请点击“确认章节类型”。';};
+$('strategy-section-save').onclick=async()=>{
+ if(strategyBusy)return;
+ if(!strategySectionId||strategyProject!==project?.id||selected()?.id!==strategySectionId){$('strategy-section-status').textContent='请先选择要写的章节。';return;}
+ if(!$('strategy-section').value){$('strategy-section-status').textContent='请选择当前章节类型';return;}
+ strategyWorking(true);
+ try{
+  const result=await libraryAPI('/section-type',{workspaceId:strategyProject,sectionId:strategySectionId,section:$('strategy-section').value});
+  strategyProposal=null;$('strategy-options').replaceChildren();
+  $('strategy-section-status').textContent=result.mode==='off'?'章节类型已确认。写作策略当前已关闭，启用后生效。':'章节类型已确认，下一条消息将按此类型查阅规则与范例。';
+ }catch(e){$('strategy-section-status').textContent=e.message;}finally{strategyWorking(false);}
 };
 function strategyDirty(){return strategyMemory&&$('strategy-memory-text').value!==strategyMemory.text;}
 function closeStrategy(){if(strategyBusy)return;if(strategyDirty()&&!confirm('放弃未保存的章节记忆修改？'))return;$('strategy-dialog').close();strategyMemory=null;}
