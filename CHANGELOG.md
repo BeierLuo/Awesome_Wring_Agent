@@ -1,5 +1,9 @@
 # Caret changelog
 
+## 2026-11-14-05 — Writing with reference papers
+
+The English and Chinese tours show how to find a source passage, inspect its paragraph structure and use it to revise a section. The library screenshot uses an illustrative reference paper and analysis.
+
 ## 2026-11-14-04 — Illustrated feature tour
 
 Both README editions now walk through the same sample manuscript, with screenshots of the writing workspace, LaTeX source, revision review and scoped preferences.
