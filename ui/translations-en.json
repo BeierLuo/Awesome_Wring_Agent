@@ -583,7 +583,7 @@
   "，已完成的分析会缓存": "; completed analysis is cached",
   "，重点借鉴“": ", focusing on “",
   "ADC 登录不可用，请运行 gcloud auth application-default login 后重试。": "ADC credentials unavailable. Run gcloud auth application-default login and retry.",
-  "Agent 依赖未就绪，请使用“启动写作工作区.command”重新启动。": "Agent dependencies are unavailable. Restart Caret using the launcher.",
+  "Agent 依赖未就绪，请使用“Launch Caret.command”重新启动。": "Agent dependencies are unavailable. Restart Caret using the launcher.",
   "Agent 文件不支持符号链接": "Symbolic links are not supported for agent files",
   "Agent 文件请求无效": "Invalid agent file request",
   "Agent 文件请求过大": "Agent file request too large",

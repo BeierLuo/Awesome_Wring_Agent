@@ -30,7 +30,7 @@ python server.py
 
 Windows 下可使用 `.venv\Scripts\python.exe -m pip install -r requirements.txt` 和 `.venv\Scripts\python.exe server.py`。
 
-打开 <http://127.0.0.1:8768/>。纯英文界面位于 <http://127.0.0.1:8768/en/>，也可点击顶栏的 English / Chinese 切换。两个版本共享项目和 API 配置，论文、对话及规则文件内容保持原文。macOS 安装好依赖后，也可双击 `启动写作工作区.command`。
+打开 <http://127.0.0.1:8768/>。纯英文界面位于 <http://127.0.0.1:8768/en/>，也可点击顶栏的 English / Chinese 切换。两个版本共享项目和 API 配置，论文、对话及规则文件内容保持原文。macOS 安装好依赖后，也可双击 `Launch Caret.command`。
 
 可选启动参数：
 

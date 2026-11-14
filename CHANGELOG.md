@@ -1,5 +1,9 @@
 # Caret changelog
 
+## 2026-11-14-03 — English macOS launcher
+
+The source launcher is now named `Launch Caret.command`. Both README editions and the missing-dependency message use the new name.
+
 ## 2026-11-14 — Documentation
 
 The main README, agent guide and GitHub release notes are available in English. The main README links to the Chinese edition. This update only changes documentation.

@@ -658,7 +658,7 @@ class Handler(BaseHTTPRequestHandler):
                     else: raise ValueError('读取方式无效')
                     return self.response(200,result)
                 prepared=prepare_agent(self.server,payload)
-            except ImportError: return self.response(503,{'error':'Agent 依赖未就绪，请使用“启动写作工作区.command”重新启动。'})
+            except ImportError: return self.response(503,{'error':'Agent 依赖未就绪，请使用“Launch Caret.command”重新启动。'})
             except CloudError as e: return self.response(502,{'error':str(e)})
             except (ValueError,TypeError,KeyError,OSError) as e: return self.response(400,{'error':str(e)})
             Agent,folder,state,target,prompt,generate,run_id,provider,model,assistant_generate=prepared
