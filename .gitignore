@@ -5,6 +5,7 @@
 # Root application modules and setup
 !/.gitignore
 !/README.md
+!/README.zh-CN.md
 !/requirements.txt
 !/启动写作工作区.command
 !/agent_files.py
