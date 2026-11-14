@@ -1,5 +1,9 @@
 # Caret changelog
 
+## 2026-11-14-04 — Illustrated feature tour
+
+Both README editions now walk through the same sample manuscript, with screenshots of the writing workspace, LaTeX source, revision review and scoped preferences.
+
 ## 2026-11-14-03 — English macOS launcher
 
 The source launcher is now named `Launch Caret.command`. Both README editions and the missing-dependency message use the new name.

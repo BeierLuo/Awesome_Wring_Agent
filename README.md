@@ -1,10 +1,41 @@
-# Caret · A local workspace for research writing
+# Caret
 
 [中文 README](README.zh-CN.md)
 
-Import a PDF or LaTeX project, choose a section, and ask Caret to revise it. Review the proposed text alongside the manuscript and save the changes you want. Caret keeps the section history, conversations and project files on your computer. Gemini or OpenAI handles writing, and an OpenAI research assistant can look up evidence, read PDF pages and analyze reference papers.
+**A local writing desk for research papers.** Open a PDF or LaTeX project, choose a section, and work on the argument with Gemini or OpenAI. Read the suggestion against the typeset page, decide which wording to keep, and return to any saved section version.
 
-[Download Caret for Apple Silicon Macs](https://github.com/BeierLuo/Awesome_Wring_Agent/releases/latest) · [Changelog](CHANGELOG.md) · [Development conventions](AGENTS.md)
+[Download for Apple Silicon](https://github.com/BeierLuo/Awesome_Wring_Agent/releases/latest) · [Run from source](#run-from-source) · [macOS setup](#macos-application) · [Changelog](CHANGELOG.md)
+
+![Caret showing the Motivation section, a writing conversation and the compiled paper side by side](docs/screenshots/writing-workspace.png)
+
+*Inside a sample project, Finding Shade on City Streets. The author is revising the opening of Motivation while the compiled paper stays visible. The manuscript and conversation were prepared for this tour.*
+
+## From a page to a paragraph
+
+**Start with the manuscript you have.** Import a PDF to identify its sections, extract the original text and work in Markdown with rendered math. Import a LaTeX ZIP to keep the original source tree, edit included files and export the project again. Each section has its own conversation and version history, with a whole-paper thread for questions that span sections.
+
+**Move between print and source.** In a compiled LaTeX project, double-click the PDF to jump to the source line. Select a passage to give the writer its underlying TeX paragraph, including equations. Switch to Source for a manual edit, then recompile to see the result.
+
+![The Source tab with main.tex open next to its compiled PDF](docs/screenshots/latex-source.png)
+
+## Decide what goes into the paper
+
+Ask for a specific change, such as making the choice between a shorter walk and a shadier one explicit. Open the proposed revision to compare it with the current text and adjust the wording before accepting. Caret checks that the LaTeX edit still matches the source. Accepting creates a new version, and **Versions** lets you inspect or restore an earlier one.
+
+![Revision review showing the original Motivation section, editable proposal and confirmation controls](docs/screenshots/review-edit.png)
+
+## Carry writing decisions across drafts
+
+A rule such as “give quantities with their units” can apply across projects, while a naming convention can belong to one paper. Open **Writing preferences** to see which rules apply to the selected section, review suggestions learned from chat and inspect their history. Each reply also records the rules used for that turn.
+
+![Writing preferences showing global and paper-specific rules for Motivation](docs/screenshots/preferences.png)
+
+| When you need to… | What Caret provides |
+| --- | --- |
+| Check a claim | Ask the research assistant to search for papers, read specific PDF pages and return evidence with sources. |
+| Find a way to frame a section | Import reference papers, look up examples grounded in their text, and compare writing strategies for a chapter type such as Motivation. |
+| Collaborate through Overleaf | Preview incoming or outgoing file changes, resolve conflicts and sync supported manuscript files. Local chats and preferences stay on your Mac. |
+| Pick up an earlier draft | Search or restore projects, reopen section conversations, compare saved versions and export source or conversations. |
 
 ## Run from source
 

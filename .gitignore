@@ -127,3 +127,11 @@ __pycache__/
 !/releases/v0.3.4/Caret.dmg
 !/releases/v0.3.4/SHA256SUMS
 !/releases/v0.3.4/README.md
+
+# README screenshots
+!/docs/
+!/docs/screenshots/
+!/docs/screenshots/latex-source.png
+!/docs/screenshots/preferences.png
+!/docs/screenshots/review-edit.png
+!/docs/screenshots/writing-workspace.png
