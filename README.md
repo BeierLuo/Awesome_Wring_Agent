@@ -17,6 +17,8 @@ python -m pip install -r requirements.txt
 python server.py
 ```
 
+On macOS, after installing the dependencies, you can also double-click `Launch Caret.command` to start the workspace.
+
 On Windows, use `.venv\Scripts\python.exe` for the installation and server commands. Open <http://127.0.0.1:8768/en/> for English or <http://127.0.0.1:8768/> for the default interface. The language switch shares projects and settings across both views and preserves the language of your text.
 
 The server listens on the loopback interface. Use `python server.py --port 8769 --no-open` to choose a port and skip opening the browser. Use `--root /path/to/private-workspaces` to move manuscript workspaces. API settings and the shared reference library still use the application directory.

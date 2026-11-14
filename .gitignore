@@ -7,7 +7,7 @@
 !/README.md
 !/README.zh-CN.md
 !/requirements.txt
-!/启动写作工作区.command
+!/Launch Caret.command
 !/agent_files.py
 !/gemini_stream.py
 !/openai_writer.py
