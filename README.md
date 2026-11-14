@@ -2,13 +2,25 @@
 
 [中文 README](README.zh-CN.md)
 
-**A local writing desk for research papers.** Open a PDF or LaTeX project, choose a section, and work on the argument with Gemini or OpenAI. Read the suggestion against the typeset page, decide which wording to keep, and return to any saved section version.
+**A local writing desk for research papers.** Open a PDF or LaTeX project, choose a section, and work on the argument with Gemini or OpenAI. Bring in papers whose writing you admire and use their paragraphs as examples when shaping your own. Read the suggestion against the typeset page, decide which wording to keep, and return to any saved section version.
 
 [Download for Apple Silicon](https://github.com/BeierLuo/Awesome_Wring_Agent/releases/latest) · [Run from source](#run-from-source) · [macOS setup](#macos-application) · [Changelog](CHANGELOG.md)
 
 ![Caret showing the Motivation section, a writing conversation and the compiled paper side by side](docs/screenshots/writing-workspace.png)
 
 *Inside a sample project, Finding Shade on City Streets. The author is revising the opening of Motivation while the compiled paper stays visible. The manuscript and conversation were prepared for this tour.*
+
+## Write with your reference papers
+
+Suppose you are revising the opening of *Finding Shade on City Streets*. You want readers to understand why distance alone is a poor guide to a comfortable walk. A paper about street noise might seem like an unlikely reference, but its opening does exactly what you need: it introduces a familiar measure, shows what that measure misses, then introduces a second one.
+
+1. **Build your library.** Open **Project & settings → Writing strategy · Paper library**, enter the library and import reference PDFs. Analyze a paper once to keep reusable examples of how it motivates a question, explains a method or interprets a result.
+2. **Inspect a paragraph in context.** Choose a purpose such as *Motivation and problem* and find examples across the library or within selected papers. Each card pairs the original excerpt and PDF page with an explanation of the paragraph’s logic, sentence by sentence. Open the original PDF to read what came before and after.
+3. **Try the move in your own section.** Choose **Use this paper as a writing reference**, then **Use for current section**. Caret prepares an editable request. You can combine up to three reference papers, review the suggestion and decide what goes into your draft.
+
+![A Motivation example from a reference PDF, with the page-one excerpt, sentence roles and controls to inspect or use the paper](docs/screenshots/reference-library.png)
+
+*Illustrative paper and analysis in Caret’s writing library.* The reference compares streets with the same average noise level but different stretches of quiet. For the walking paper, you might ask: **“Use that opening structure. Start with route length, show what it misses about direct sun, then introduce minutes of exposure. Keep our measurements and citations unchanged.”** The connection is in how the paragraph works. The evidence comes from your own manuscript.
 
 ## From a page to a paragraph
 
