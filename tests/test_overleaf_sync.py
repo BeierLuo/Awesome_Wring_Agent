@@ -97,6 +97,20 @@ class SyncTests(unittest.TestCase):
         self.assertIn('Local.',(self.folder/'latex/main.tex').read_text())
 
 class ValidationTests(unittest.TestCase):
+    def test_git_failure_reports_safe_action(self):
+        cases = [
+            (b'remote: no healthy upstream\nfatal: requested URL returned error: 503', 'HTTP 503'),
+            (b'Authentication failed', 'token'),
+            (b'requested URL returned error: 403', 'permissions'),
+            (b'Could not resolve host', 'network'),
+            (b'[rejected] master -> master (fetch first)', 'before pushing'),
+        ]
+        for diagnostic, expected in cases:
+            with self.subTest(diagnostic=diagnostic):
+                message = o.git_failure(b'SECRET ' + diagnostic)
+                self.assertIn(expected, message)
+                self.assertNotIn('SECRET', message)
+
     def test_urls(self):
         self.assertEqual(o.normalize_url('git clone https://git@git.overleaf.com/abcdef'),'https://git@git.overleaf.com/abcdef')
         for url in ['https://evil.test/abcdef','https://git:secret@git.overleaf.com/abcdef','https://git.overleaf.com/abcdef?x=1','file:///tmp/repo','--upload-pack=x','http://git.overleaf.com/abcdef']:

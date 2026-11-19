@@ -172,6 +172,21 @@ class AgentTests(unittest.TestCase):
         self.assertIn('NEWEST_CURRENT_VERSION',json.dumps(requests[0]))
         self.assertNotIn('CURRENT_ABSTRACT',json.dumps(requests[0]))
 
+    def test_section_fits_remaining_turn_budget(self):
+        paper = PaperTools(self.folder, self.state)
+        text = '中文"\n\\' * 3000
+        self.sections[0]['text'] = text
+        paper.tool_chars = 47000
+        args = {'section_id': self.sections[0]['id'], 'offset': 73}
+        result = paper.execute('read_section', args)
+        self.assertTrue(result['turn_limit_reached'])
+        self.assertGreater(result['next_offset'], 73)
+        self.assertEqual(result['text'], text[73:result['next_offset']])
+        self.assertEqual(paper.tool_chars, 47000 + len(json.dumps(result, ensure_ascii=False)))
+        self.assertLessEqual(paper.tool_chars, 48000)
+        with self.assertRaisesRegex(ValueError, '根据已有资料回答'):
+            paper.execute('read_section', args)
+
     def test_bad_tool_and_scope_bounds(self):
         paper=PaperTools(self.folder,self.state)
         for name,args in [('write_file',{'path':'../secret'}),('read_section',{'section_id':'../secret'}),('read_pdf_pages',{'start_page':0}),('read_pdf_pages',{'start_page':1,'end_page':4}),('read_section',{'section_id':'abstract','max_chars':999999})]:

@@ -11,6 +11,7 @@ import pymupdf
 INDEX_LOCK = threading.Lock()
 MAX_PAGE_TEXT = 100000
 MAX_PAGES = 500
+MAX_TOOL_CHARS = 48000
 
 
 def private_json(path, value):
@@ -191,14 +192,31 @@ class PaperTools:
     def execute(self, name, args):
         if name not in {'list_sections','read_section','search_paper','read_pdf_pages'} or not isinstance(args,dict):
             raise ValueError('未知工具或参数无效')
-        if self.tool_chars>=48000:
+        if self.tool_chars>=MAX_TOOL_CHARS:
             raise ValueError('本轮资料读取已达长度上限，请根据已有资料回答或下一轮继续')
         try:
             result=getattr(self,name)(**args)
         except TypeError:
             raise ValueError('工具参数不正确，请按声明使用') from None
         size=len(json.dumps(result,ensure_ascii=False))
-        if self.tool_chars+size>48000:
+        remaining = MAX_TOOL_CHARS - self.tool_chars
+        if size > remaining and name == 'read_section' and result.get('text'):
+            # Include the envelope, JSON escapes and continuation offset in the budget.
+            text = result['text']
+            low, high = 1, len(text) - 1
+            while low <= high:
+                count = (low + high) // 2
+                candidate = {**result, 'text': text[:count], 'next_offset': result['offset'] + count,
+                             'turn_limit_reached': True}
+                candidate_size = len(json.dumps(candidate, ensure_ascii=False))
+                if candidate_size <= remaining:
+                    result, size = candidate, candidate_size
+                    low = count + 1
+                else:
+                    high = count - 1
+            if size > remaining:
+                raise ValueError('本轮资料读取已达长度上限，请根据已有资料回答或下一轮继续')
+        if size > remaining:
             raise ValueError('本轮资料读取将超过长度上限，请缩小读取范围')
         self.tool_chars+=size
         return result

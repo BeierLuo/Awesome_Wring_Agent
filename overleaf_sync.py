@@ -13,6 +13,24 @@ def normalize_url(value):
     return 'https://git@git.overleaf.com/'+match[1]
 
 
+def git_failure(stderr):
+    # Return only fixed messages. Git output may contain private URLs or credentials.
+    detail = stderr.lower()
+    status = re.search(rb"requested url returned error: ([0-9]{3})\b", detail)
+    code = int(status[1]) if status else None
+    if code and 500 <= code <= 599:
+        return f'Overleaf Git is temporarily unavailable (HTTP {code}). Try previewing again later.'
+    if code == 401 or b'authentication failed' in detail:
+        return 'Overleaf rejected the Git credentials. Check the saved Git token.'
+    if code == 403:
+        return 'Overleaf denied Git access (HTTP 403). Check your project permissions and Git access.'
+    if b'could not resolve host' in detail or b'failed to connect' in detail:
+        return 'Git could not reach Overleaf. Check the network connection and try again.'
+    if b'[rejected]' in detail and (b'non-fast-forward' in detail or b'fetch first' in detail):
+        return 'Overleaf changed since the preview. Preview again before pushing.'
+    return 'Overleaf Git operation failed. Preview again and check Git access if the problem persists.'
+
+
 def private_json(path,data):
     path.parent.mkdir(parents=True,exist_ok=True,mode=0o700);os.chmod(path.parent,0o700)
     temp=path.with_name(uuid.uuid4().hex+'.tmp')
@@ -67,7 +85,7 @@ class Sync:
         except subprocess.TimeoutExpired:raise ValueError('Overleaf request timed out. Check the sync status before retrying.') from None
         if r.returncode:
             # Git diagnostics can contain authentication material; never forward raw output.
-            raise ValueError('Overleaf Git operation failed. Check Git access, the token and network; if pushing, preview again because the remote may have changed.')
+            raise ValueError(git_failure(r.stderr))
         return r.stdout
 
     def fetch(self):
